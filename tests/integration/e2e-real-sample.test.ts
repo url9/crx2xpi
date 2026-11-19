@@ -31,16 +31,13 @@ interface SampleSpec {
 }
 
 /**
- * All committed fixtures are REAL CRX3 containers, each exercising a
- * different production axis:
+ * The committed fixture is the project's own synthetic CRX3 container,
+ * packed with the official `crx3` tool (small signed header). Regenerate with:
+ * `pnpm dlx crx3 extension/ -o sample-mv3.crx -p key.pem`
  *
- * - `sample-mv3 (crx2xpi).crx` — synthetic minimal sample packed with the
- *   official `crx3` tool (small signed header). Regenerate with:
- *   `pnpm dlx crx3 extension/ -o sample-mv3.crx -p key.pem`
- * - `chrome-remote-desktop (Google).crx` — official Chrome Web Store build
- *   (Google-signed large header + `_metadata/verified_contents.json`).
- * - `digital-memory (pankajdhameliya).crx` — indie-developer Vite build
- *   (module-type service_worker, 30+ bundled assets, `_metadata/`).
+ * Third-party extension binaries are deliberately not checked in:
+ * redistributing them is not license-compliant. Production-shaped inputs are
+ * covered by the synthetic in-memory CRX builders in the unit tests instead.
  *
  * Naming rule: `<extension-name> (<developer>).<ext>` — a space, then the
  * developer name in ASCII parentheses. Applies to every extension binary in
@@ -55,79 +52,6 @@ const SAMPLES: SampleSpec[] = [
     manifestName: 'crx2xpi E2E Sample',
     serviceWorker: 'background.js',
     untouchedFiles: ['background.js', 'content.js'],
-  },
-  {
-    file: 'chrome-remote-desktop (Google).crx',
-    headerLength: 1309,
-    payloadOffset: 1321,
-    payloadEntries: [
-      '_metadata/',
-      '_metadata/verified_contents.json',
-      'chromoting128.png',
-      'chromoting48.png',
-      'event_page_binary.js',
-      'manifest.json',
-    ],
-    manifestName: 'Chrome Remote Desktop',
-    serviceWorker: 'event_page_binary.js',
-    untouchedFiles: [
-      '_metadata/verified_contents.json',
-      'chromoting128.png',
-      'chromoting48.png',
-      'event_page_binary.js',
-    ],
-  },
-  {
-    file: 'digital-memory (pankajdhameliya).crx',
-    headerLength: 1309,
-    payloadOffset: 1321,
-    payloadEntries: [
-      '_metadata/',
-      '_metadata/verified_contents.json',
-      'assets/chunk-BoLyMdNB.js',
-      'assets/chunk-CCGN3lja.js',
-      'assets/chunk-CWs-kNBM.js',
-      'assets/chunk-CfnOVvxt.js',
-      'assets/chunk-CqtLmHto.js',
-      'assets/chunk-D-WzIiMq.js',
-      'assets/chunk-DFF8H6gq.js',
-      'assets/chunk-DGH2ApZi.js',
-      'assets/chunk-DLw8Ve-Q.js',
-      'assets/chunk-FR0lKTDZ.js',
-      'assets/chunk-HAwQ1aUs.js',
-      'assets/chunk-bjXwXwo3.js',
-      'assets/dashboard-CsLN3Agy.js',
-      'assets/dm-toy-C_3HW79i.css',
-      'assets/offscreen-BX9BLJue.js',
-      'assets/pdf.worker.min.mjs',
-      'assets/popup-Dk7lWfbm.js',
-      'assets/sidepanel-DQ4Hd_bW.js',
-      'background.js',
-      'content.js',
-      'icons/icon-128.png',
-      'icons/icon-16.png',
-      'icons/icon-32.png',
-      'icons/icon-48.png',
-      'manifest.json',
-      'src/dashboard/index.html',
-      'src/offscreen/index.html',
-      'src/popup/index.html',
-      'src/sidepanel/index.html',
-      'theme-boot.js',
-    ],
-    manifestName: 'Digital Memory',
-    serviceWorker: 'background.js',
-    // The source worker is an ES module (static `import`); the flag must be
-    // preserved or Firefox throws SyntaxError and the background never starts.
-    backgroundType: 'module',
-    untouchedFiles: [
-      '_metadata/verified_contents.json',
-      'assets/pdf.worker.min.mjs',
-      'background.js',
-      'content.js',
-      'icons/icon-128.png',
-      'theme-boot.js',
-    ],
   },
 ];
 
