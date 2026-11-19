@@ -6,11 +6,16 @@
  * this module is the only place that reads CRX containers, mutates the payload
  * and repackages an XPI.
  */
-import { mkdirSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AdmZip from 'adm-zip';
-import type { GeckoBackgroundConfig, WebExtensionManifest } from '../parsers/manifest-parser.js';
+import type {
+  GeckoBackgroundConfig,
+  ManifestParseResult,
+  WebExtensionManifest,
+} from '../parsers/manifest-parser.js';
 import { ManifestValidationError, parseManifest } from '../parsers/manifest-parser.js';
 
 /**
@@ -50,6 +55,26 @@ export class ConversionError extends Error {
   }
 }
 
+/** Stages reported through `ConversionOptions.onProgress`, in execution order. */
+export type ConversionStage =
+  'header-parsed' | 'manifest-parsed' | 'polyfill-injected' | 'repacked';
+
+/** A single progress event emitted while a conversion runs. */
+export interface ConversionProgress {
+  /** The stage that just finished. */
+  stage: ConversionStage;
+  /** Human-readable detail for CLI verbose output. */
+  detail: string;
+}
+
+/** Optional behaviour knobs for `convertCrxToXpi`. */
+export interface ConversionOptions {
+  /** Receives one event per finished stage; used for verbose CLI logging. */
+  onProgress?: (event: ConversionProgress) => void;
+  /** Keep the extracted payload directory on disk for debugging. */
+  keepTempDir?: boolean;
+}
+
 /** Summary of a finished conversion, returned to callers for reporting. */
 export interface ConversionResult {
   /** Path the repacked XPI was written to. */
@@ -60,6 +85,8 @@ export interface ConversionResult {
   manifestVersion: 2 | 3;
   /** Whether the MV3 service_worker downgrade was applied. */
   downgraded: boolean;
+  /** Extracted payload directory, present only with `keepTempDir: true`. */
+  tempDir?: string;
 }
 
 /** Layout of the fixed CRX header, derived from the container spec. */
@@ -191,18 +218,19 @@ export function extractCrxZipPayload(crxBuffer: Buffer): Buffer {
  * Read a CRX file from disk and unpack it into its ZIP payload.
  *
  * @param crxPath - Path to the source `.crx` file.
- * @returns The ZIP payload of the extension.
+ * @returns The ZIP payload plus the validated header layout for reporting.
  * @throws {ConversionError} When the file cannot be read.
  * @throws {CrxFormatError} When the container header is malformed.
  */
-function unpackCrx(crxPath: string): Buffer {
+function unpackCrx(crxPath: string): { zip: Buffer; header: Crx3HeaderInfo } {
   let crxBuffer: Buffer;
   try {
     crxBuffer = readFileSync(crxPath);
   } catch (cause) {
     throw new ConversionError(`cannot read CRX file at ${crxPath}`, { cause });
   }
-  return extractCrxZipPayload(crxBuffer);
+  const header = parseCrx3Header(crxBuffer);
+  return { zip: crxBuffer.subarray(header.payloadOffset), header };
 }
 
 /**
@@ -277,6 +305,47 @@ function buildGeckoManifest(
 }
 
 /**
+ * Apply the Gecko downgrade to the ZIP payload in place.
+ *
+ * Parsing is pure and never writes; this helper is the single point where the
+ * parsed downgrade plan becomes payload mutation, and it only runs when a
+ * service_worker downgrade was actually generated.
+ *
+ * @param zip - In-memory ZIP archive of the extension payload (mutated).
+ * @param parseResult - Validated parse result carrying the downgrade plan.
+ * @returns True when the manifest was rewritten and the polyfill injected.
+ * @throws {ConversionError} When the bundled polyfill asset cannot be read.
+ */
+function applyGeckoDowngrade(zip: AdmZip, parseResult: ManifestParseResult): boolean {
+  const geckoBackground = parseResult.geckoBackground;
+  if (geckoBackground === undefined) {
+    return false;
+  }
+  const rewritten = buildGeckoManifest(parseResult.manifest, geckoBackground);
+  zip.updateFile(MANIFEST_ENTRY_NAME, Buffer.from(JSON.stringify(rewritten, null, 2), 'utf8'));
+  zip.addFile(POLYFILL_ENTRY_NAME, readPolyfillSource());
+  return true;
+}
+
+/**
+ * Extract the final payload to a fresh temporary directory for debugging.
+ *
+ * @param zip - Repacked (already converted) ZIP payload.
+ * @returns The created directory path; the caller decides whether to clean up.
+ * @throws {ConversionError} When the directory cannot be created or written.
+ */
+function extractForDebugging(zip: AdmZip): string {
+  const tempDir = mkdtempSync(join(tmpdir(), 'crx2xpi-debug-'));
+  try {
+    zip.extractAllTo(tempDir, true);
+  } catch (cause) {
+    rmSync(tempDir, { recursive: true, force: true });
+    throw new ConversionError(`cannot extract payload for debugging to ${tempDir}`, { cause });
+  }
+  return tempDir;
+}
+
+/**
  * Convert a Chrome CRX3 extension into a Firefox-compatible XPI package.
  *
  * <conversion steps>
@@ -288,28 +357,47 @@ function buildGeckoManifest(
  *    manifest with the Gecko background section (polyfill prepended) and add
  *    the polyfill asset to the package root.
  * 4. Repack the payload as an XPI at `outputPath`, creating parent
- *    directories as needed.
+ *    directories as needed; optionally extract the result to a temporary
+ *    directory for debugging.
  * </conversion steps>
  *
  * @param crxPath - Path to the source `.crx` file.
  * @param outputPath - Path the converted `.xpi` is written to.
+ * @param options - Optional progress reporting and debug-directory behaviour.
  * @returns A summary of the conversion for reporting and testing.
  * @throws {ConversionError} On unreadable input, missing/invalid manifest
  * entry JSON, or an unwritable output path.
  * @throws {CrxFormatError} When the CRX header is malformed.
  * @throws {ManifestValidationError} When the manifest fails schema validation.
  */
-export function convertCrxToXpi(crxPath: string, outputPath: string): ConversionResult {
-  const zipBuffer = unpackCrx(crxPath);
+export function convertCrxToXpi(
+  crxPath: string,
+  outputPath: string,
+  options: ConversionOptions = {}
+): ConversionResult {
+  const emit = (stage: ConversionStage, detail: string): void => {
+    options.onProgress?.({ stage, detail });
+  };
+
+  const { zip: zipBuffer, header } = unpackCrx(crxPath);
+  emit(
+    'header-parsed',
+    `CRX3 header validated (header_length=${header.headerLength}, ZIP payload starts at byte ${header.payloadOffset})`
+  );
+
   const zip = new AdmZip(zipBuffer);
   const parseResult = parseManifest(loadZipManifest(zip));
+  emit(
+    'manifest-parsed',
+    `manifest parsed: "${parseResult.manifest.name}" (manifest v${parseResult.manifest.manifest_version})`
+  );
 
-  if (parseResult.geckoBackground !== undefined) {
-    // Parsing is pure and never writes; the engine applies the downgrade to
-    // the payload only here, and only when a downgrade was actually needed.
-    const rewritten = buildGeckoManifest(parseResult.manifest, parseResult.geckoBackground);
-    zip.updateFile(MANIFEST_ENTRY_NAME, Buffer.from(JSON.stringify(rewritten, null, 2), 'utf8'));
-    zip.addFile(POLYFILL_ENTRY_NAME, readPolyfillSource());
+  const downgraded = applyGeckoDowngrade(zip, parseResult);
+  if (downgraded) {
+    emit(
+      'polyfill-injected',
+      `service_worker downgraded to background.scripts; ${POLYFILL_ENTRY_NAME} prepended first`
+    );
   }
 
   try {
@@ -318,12 +406,17 @@ export function convertCrxToXpi(crxPath: string, outputPath: string): Conversion
   } catch (cause) {
     throw new ConversionError(`cannot write XPI package at ${outputPath}`, { cause });
   }
+  emit('repacked', `XPI written to ${outputPath}`);
+
+  // Debugging aid only: the conversion itself stays in memory unless asked.
+  const tempDir = options.keepTempDir === true ? extractForDebugging(zip) : undefined;
 
   return {
     outputPath,
     manifestName: parseResult.manifest.name,
     manifestVersion: parseResult.manifest.manifest_version,
-    downgraded: parseResult.downgradeApplied,
+    downgraded,
+    ...(tempDir === undefined ? {} : { tempDir }),
   };
 }
 
