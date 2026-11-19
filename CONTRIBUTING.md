@@ -1,5 +1,7 @@
 # Contributing to crx2xpi
 
+English | [中文](CONTRIBUTING.zh.md)
+
 Thanks for your interest in improving `crx2xpi`. This project aims to be an
 industrial-grade, community-maintained bridge between Chromium MV3 extensions
 and the Gecko/WebExtension runtime. Every contribution — bug report, fix,

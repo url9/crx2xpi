@@ -1,5 +1,7 @@
 # crx2xpi
 
+English | [中文](README.zh.md)
+
 > Convert Chrome MV3 extensions (CRX3) into Firefox / GeckoView-compatible XPI add-ons.
 
 `crx2xpi` aims to become an industrial-grade, community-maintained bridge
