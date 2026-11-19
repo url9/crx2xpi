@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Fast pre-commit gate: lint, strict type check, and unit tests.
+# Full CI also runs formatting checks on push / PR.
+pnpm lint && pnpm typecheck && pnpm test
