@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CliIo } from '../../src/cli.js';
 import { parseCliArgs, runCli } from '../../src/cli.js';
 
-const FIXTURE_PATH = new URL('../fixtures/sample-mv3.crx', import.meta.url);
+const FIXTURE_PATH = new URL('../fixtures/sample-mv3 (crx2xpi).crx', import.meta.url);
 
 /** In-memory IO double recording every message for assertions. */
 function recordingIo(): CliIo & { out: string[]; err: string[] } {
