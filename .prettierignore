@@ -5,3 +5,5 @@ pnpm-lock.yaml
 LICENSE
 NOTICE
 *.md
+# Vendored third-party bundle (webextension-polyfill dist), not project source
+src/assets

@@ -148,7 +148,7 @@ describe('convertCrxToXpi', () => {
     expect(xpi.readAsText('background.js')).toBe('init();');
   });
 
-  it('ships a polyfill that registers a promise-based browser namespace', () => {
+  it('ships the official Mozilla webextension-polyfill bundle', () => {
     const crxPath = join(workDir, 'demo.crx');
     const outputPath = join(workDir, 'demo.xpi');
     writeFileSync(crxPath, buildCrx3(makeExtensionZip(MV3_MANIFEST)));
@@ -156,7 +156,9 @@ describe('convertCrxToXpi', () => {
     convertCrxToXpi(crxPath, outputPath);
 
     const polyfill = new AdmZip(outputPath).readAsText(POLYFILL_ENTRY_NAME);
-    expect(polyfill).toContain('global.browser = browser');
+    // The injected asset must be the unmodified upstream dist build.
+    expect(polyfill).toContain('webextension-polyfill');
+    expect(polyfill).toContain('browser.runtime.id');
   });
 
   it('leaves an MV2 manifest untouched and injects nothing', () => {

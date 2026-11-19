@@ -19,3 +19,11 @@ limitations under the License.
 Third-party dependencies and their licenses are declared in package.json
 and resolved in the lockfile. This NOTICE file is provided for
 informational purposes only and does not modify the terms of the License.
+
+Bundled third-party code:
+
+  src/assets/polyfill.js
+    Mozilla webextension-polyfill v0.12.0 (dist build, unmodified).
+    Copyright (c) the webextension-polyfill contributors.
+    Licensed under the Mozilla Public License, Version 2.0.
+    Source: https://github.com/mozilla/webextension-polyfill

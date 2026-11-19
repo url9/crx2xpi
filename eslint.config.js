@@ -7,10 +7,29 @@ import jsdoc from 'eslint-plugin-jsdoc';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'pnpm-lock.yaml'],
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'node_modules/**',
+      'pnpm-lock.yaml',
+      // Vendored third-party bundles (webextension-polyfill dist) are not
+      // project source and must not be linted or reformatted.
+      'src/assets/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    // Node helper scripts use runtime globals that ESLint cannot infer from
+    // their plain-JS environment.
+    files: ['scripts/**/*.js'],
+    languageOptions: {
+      globals: {
+        URL: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
   {
     files: ['**/*.ts'],
     languageOptions: {
