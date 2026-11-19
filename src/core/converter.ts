@@ -118,8 +118,34 @@ const MANIFEST_ENTRY_NAME = 'manifest.json';
  */
 export const POLYFILL_ENTRY_NAME = 'browser-polyfill.js';
 
-/** Pre-computed asset location so the polyfill is read lazily, not at import. */
+/**
+ * Entry name under which the Firefox `chrome`-to-`browser` alias shim is
+ * injected into the XPI root.
+ *
+ * Exported because rewrite and packaging code (and their tests) must agree on
+ * a single canonical path for the injected asset.
+ */
+export const CHROME_SHIM_ENTRY_NAME = 'chrome-promise-shim.js';
+
+/** Pre-computed asset locations so assets are read lazily, not at import. */
 const POLYFILL_ASSET_URL = new URL('../assets/polyfill.js', import.meta.url);
+const CHROME_SHIM_ASSET_URL = new URL('../assets/chrome-shim.js', import.meta.url);
+
+/**
+ * Read a bundled asset source from the package assets.
+ *
+ * @param assetUrl - `file:` URL of the asset inside the package layout.
+ * @param label - Asset name used in error messages.
+ * @returns Raw asset bytes, ready to be stored in the XPI.
+ * @throws {ConversionError} When the asset is missing from the package layout.
+ */
+function readAssetSource(assetUrl: URL, label: string): Buffer {
+  try {
+    return readFileSync(fileURLToPath(assetUrl));
+  } catch (cause) {
+    throw new ConversionError(`${label} asset is missing from the package`, { cause });
+  }
+}
 
 /**
  * Read the bundled browser-polyfill source from the package assets.
@@ -128,11 +154,17 @@ const POLYFILL_ASSET_URL = new URL('../assets/polyfill.js', import.meta.url);
  * @throws {ConversionError} When the asset is missing from the package layout.
  */
 function readPolyfillSource(): Buffer {
-  try {
-    return readFileSync(fileURLToPath(POLYFILL_ASSET_URL));
-  } catch (cause) {
-    throw new ConversionError('browser-polyfill asset is missing from the package', { cause });
-  }
+  return readAssetSource(POLYFILL_ASSET_URL, 'browser-polyfill');
+}
+
+/**
+ * Read the bundled `chrome`-alias shim source from the package assets.
+ *
+ * @returns Raw shim script bytes, ready to be stored in the XPI.
+ * @throws {ConversionError} When the asset is missing from the package layout.
+ */
+function readChromeShimSource(): Buffer {
+  return readAssetSource(CHROME_SHIM_ASSET_URL, 'chrome-promise-shim');
 }
 
 /**
@@ -261,19 +293,36 @@ function loadZipManifest(zip: AdmZip): unknown {
 }
 
 /**
- * Prepend the browser-polyfill entry to a background script list.
+ * Prepend the Firefox compatibility entries to a background script list.
  *
- * WHY prepend rather than append: the polyfill must be evaluated before any
- * script that calls the promise-based `browser.*` API — an appended polyfill
- * leaves those calls hitting `undefined` at load time. Injecting once is
- * guaranteed by checking for an existing entry first, so re-running the
- * conversion on an already-converted payload cannot duplicate the file.
+ * WHY two entries and why they are prepended rather than appended: the shim
+ * and the polyfill must both be evaluated before any script that calls the
+ * WebExtension API — an appended entry leaves those calls hitting `undefined`
+ * at load time. Order of the two entries:
+ *
+ * 1. `chrome-promise-shim.js` — Firefox keeps `chrome` callback-only while
+ *    Chrome MV3 code calls `await chrome.*`; on Firefox the shim aliases
+ *    `chrome` to the promise-capable `browser` namespace, which is the only
+ *    way promise-style calls resolve to real values. It runs first so the
+ *    alias exists before anything (including the polyfill below) touches
+ *    `chrome`.
+ * 2. `browser-polyfill.js` — Mozilla's polyfill for code that references the
+ *    promise-based `browser.*` API; it is a no-op where `browser` already
+ *    exists natively.
+ *
+ * Injecting each entry once is guaranteed by checking for it first, so
+ * re-running the conversion on an already-converted payload cannot duplicate
+ * either file.
  *
  * @param scripts - Background script paths produced by the manifest parser.
- * @returns A new script list headed by the polyfill, original order preserved.
+ * @returns A new script list headed by the shim and polyfill, original order
+ *          preserved.
  */
 export function injectPolyfillScript(scripts: string[]): string[] {
-  return scripts.includes(POLYFILL_ENTRY_NAME) ? scripts : [POLYFILL_ENTRY_NAME, ...scripts];
+  const head = [CHROME_SHIM_ENTRY_NAME, POLYFILL_ENTRY_NAME].filter(
+    (entry) => !scripts.includes(entry)
+  );
+  return [...head, ...scripts];
 }
 
 /**
@@ -317,7 +366,7 @@ function buildGeckoManifest(
  *
  * @param zip - In-memory ZIP archive of the extension payload (mutated).
  * @param parseResult - Validated parse result carrying the downgrade plan.
- * @returns True when the manifest was rewritten and the polyfill injected.
+ * @returns True when the manifest was rewritten and the shim/polyfill injected.
  * @throws {ConversionError} When the bundled polyfill asset cannot be read.
  */
 function applyGeckoDowngrade(zip: AdmZip, parseResult: ManifestParseResult): boolean {
@@ -327,6 +376,7 @@ function applyGeckoDowngrade(zip: AdmZip, parseResult: ManifestParseResult): boo
   }
   const rewritten = buildGeckoManifest(parseResult.manifest, geckoBackground);
   zip.updateFile(MANIFEST_ENTRY_NAME, Buffer.from(JSON.stringify(rewritten, null, 2), 'utf8'));
+  zip.addFile(CHROME_SHIM_ENTRY_NAME, readChromeShimSource());
   zip.addFile(POLYFILL_ENTRY_NAME, readPolyfillSource());
   return true;
 }
@@ -358,8 +408,8 @@ function extractForDebugging(zip: AdmZip): string {
  * 2. Locate `manifest.json` in the payload and validate it with
  *    `parseManifest`.
  * 3. When the parser generated a service_worker downgrade, rewrite the
- *    manifest with the Gecko background section (polyfill prepended) and add
- *    the polyfill asset to the package root.
+ *    manifest with the Gecko background section (shim + polyfill prepended)
+ *    and add both compatibility assets to the package root.
  * 4. Repack the payload as an XPI at `outputPath`, creating parent
  *    directories as needed; optionally extract the result to a temporary
  *    directory for debugging.
@@ -400,7 +450,7 @@ export function convertCrxToXpi(
   if (downgraded) {
     emit(
       'polyfill-injected',
-      `service_worker downgraded to background.scripts; ${POLYFILL_ENTRY_NAME} prepended first`
+      `service_worker downgraded to background.scripts; ${CHROME_SHIM_ENTRY_NAME} and ${POLYFILL_ENTRY_NAME} prepended first`
     );
   }
 

@@ -5,6 +5,7 @@ import AdmZip from 'adm-zip';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   POLYFILL_ENTRY_NAME,
+  CHROME_SHIM_ENTRY_NAME,
   convertCrxToXpi,
   extractCrxZipPayload,
   parseCrx3Header,
@@ -119,15 +120,17 @@ function registerRealSampleSuite(spec: SampleSpec): void {
       };
 
       // The Chromium-only service_worker must be gone, replaced by the
-      // event-page scripts form with the polyfill evaluated first. A module
-      // worker keeps its `type` so static `import` stays parseable in Firefox.
+      // event-page scripts form with the shim and polyfill evaluated first.
+      // A module worker keeps its `type` so static `import` stays parseable
+      // in Firefox.
       expect(manifest.background).toEqual({
-        scripts: [POLYFILL_ENTRY_NAME, spec.serviceWorker],
+        scripts: [CHROME_SHIM_ENTRY_NAME, POLYFILL_ENTRY_NAME, spec.serviceWorker],
         persistent: false,
         ...(spec.backgroundType === undefined ? {} : { type: spec.backgroundType }),
       });
       expect(manifest.background?.service_worker).toBeUndefined();
       expect(xpi.getEntry(POLYFILL_ENTRY_NAME)).not.toBeNull();
+      expect(xpi.getEntry(CHROME_SHIM_ENTRY_NAME)).not.toBeNull();
     });
 
     it('preserves every non-manifest payload file byte-for-byte', () => {
@@ -149,8 +152,13 @@ function registerRealSampleSuite(spec: SampleSpec): void {
         expect(Buffer.compare(before as Buffer, after as Buffer)).toBe(0);
       }
 
-      // The XPI adds exactly the polyfill on top of the original payload.
-      const expectedEntries = [...spec.payloadEntries, POLYFILL_ENTRY_NAME].sort();
+      // The XPI adds exactly the two compatibility assets on top of the
+      // original payload.
+      const expectedEntries = [
+        ...spec.payloadEntries,
+        CHROME_SHIM_ENTRY_NAME,
+        POLYFILL_ENTRY_NAME,
+      ].sort();
       expect(
         converted
           .getEntries()

@@ -129,7 +129,10 @@ describe('runCli', () => {
     const manifest = JSON.parse(readFileSync(join(tempDir, 'manifest.json'), 'utf8')) as {
       background?: { scripts?: string[] };
     };
-    expect(manifest.background?.scripts?.[0]).toBe('browser-polyfill.js');
+    expect(manifest.background?.scripts?.slice(0, 2)).toEqual([
+      'chrome-promise-shim.js',
+      'browser-polyfill.js',
+    ]);
   });
 
   it('fails with exit code 1 and an error message for missing input', () => {

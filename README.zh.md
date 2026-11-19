@@ -44,9 +44,12 @@ node dist/cli.js --verbose sample.crx out/sample.xpi
 ![crx2xpi CLI 在终端中转换 CRX3 样本](./docs/cli-screenshot.png)
 
 CLI 成功时退出码为 `0`，用法或转换错误时为 `1`。
-内置 polyfill：打包的 XPI 携带 Mozilla 官方的
-[`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)
-（MPL-2.0，见 [NOTICE](./NOTICE)）；注入的条目始终在 `background.scripts` 中第一个求值。
+内置兼容资产：打包的 XPI 携带两个条目，始终在 `background.scripts` 中最先求值：
+
+1. `chrome-promise-shim.js` —— Firefox 的 `chrome` 命名空间只支持回调风格，而 Chrome MV3 源码使用 `await chrome.*` 的 Promise 风格。该 shim 在 Firefox 上把 `chrome` 别名到支持 Promise 的 `browser` 命名空间，无需改动原扩展代码即可恢复 Chromium 的调用语义。没有它，转换后的扩展能加载、无报错，但所有 Promise 风格的 API 调用会静默返回 `undefined`。
+2. [`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)（MPL-2.0，见 [NOTICE](./NOTICE)）—— Mozilla 官方 polyfill，供引用 `browser.*` Promise API 的代码使用；在原生已有 `browser` 的环境下是空操作。
+
+上述行为已通过端到端实测验证：开源扩展 CookieMop 经 `crx2xpi` 转换后，在 Firefox 中关闭标签页时会真实删除对应 Cookie（包括 HttpOnly Cookie），而这依赖 Promise shim 的存在。
 
 ## 如何安装生成的 XPI
 

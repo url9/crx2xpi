@@ -5,6 +5,7 @@ import AdmZip from 'adm-zip';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   POLYFILL_ENTRY_NAME,
+  CHROME_SHIM_ENTRY_NAME,
   ConversionError,
   CrxFormatError,
   convertCrxToXpi,
@@ -115,7 +116,7 @@ describe('extractCrxZipPayload', () => {
 });
 
 describe('convertCrxToXpi', () => {
-  it('downgrades an MV3 service worker and injects the polyfill at package root', () => {
+  it('downgrades an MV3 service worker and injects the shim and polyfill at package root', () => {
     const crxPath = join(workDir, 'demo.crx');
     const outputPath = join(workDir, 'dist', 'demo.xpi');
     writeFileSync(
@@ -138,12 +139,13 @@ describe('convertCrxToXpi', () => {
       background?: { scripts?: string[]; persistent?: boolean; service_worker?: string };
     };
     expect(rewritten.background).toEqual({
-      scripts: [POLYFILL_ENTRY_NAME, 'background.js'],
+      scripts: [CHROME_SHIM_ENTRY_NAME, POLYFILL_ENTRY_NAME, 'background.js'],
       persistent: false,
     });
     // The Chromium-only field must not survive into the Gecko manifest.
     expect(rewritten.background?.service_worker).toBeUndefined();
     expect(xpi.getEntry(POLYFILL_ENTRY_NAME)).not.toBeNull();
+    expect(xpi.getEntry(CHROME_SHIM_ENTRY_NAME)).not.toBeNull();
     // Non-manifest payload files are carried over untouched.
     expect(xpi.readAsText('background.js')).toBe('init();');
   });
@@ -173,10 +175,24 @@ describe('convertCrxToXpi', () => {
     // Without type:"module" Firefox parses the import as classic-script syntax
     // and throws SyntaxError, so the background would never start.
     expect(rewritten.background).toEqual({
-      scripts: [POLYFILL_ENTRY_NAME, 'background.js'],
+      scripts: [CHROME_SHIM_ENTRY_NAME, POLYFILL_ENTRY_NAME, 'background.js'],
       persistent: false,
       type: 'module',
     });
+  });
+
+  it('ships a chrome alias shim that no-ops where browser already exists', () => {
+    const crxPath = join(workDir, 'demo.crx');
+    const outputPath = join(workDir, 'demo.xpi');
+    writeFileSync(crxPath, buildCrx3(makeExtensionZip(MV3_MANIFEST)));
+
+    convertCrxToXpi(crxPath, outputPath);
+
+    const shim = new AdmZip(outputPath).readAsText(CHROME_SHIM_ENTRY_NAME);
+    // The shim only aliases chrome to the promise-capable browser namespace,
+    // restoring Chromium semantics for `await chrome.*` calls on Firefox.
+    expect(shim).toContain('globalThis.chrome = browser');
+    expect(shim).toContain("typeof browser !== 'undefined'");
   });
 
   it('ships the official Mozilla webextension-polyfill bundle', () => {
@@ -238,9 +254,10 @@ describe('convertCrxToXpi', () => {
 
     // The produced XPI is a plain ZIP whose manifest validates as MV2-shaped
     // background scripts, proving the downgrade output is itself parseable.
+    // Entry count: manifest + the two injected compatibility assets.
     const xpiBytes = readFileSync(outputPath);
     const zip = new AdmZip(xpiBytes);
     expect(zip.getEntry('manifest.json')).not.toBeNull();
-    expect(zip.getEntryCount()).toBe(2);
+    expect(zip.getEntryCount()).toBe(3);
   });
 });

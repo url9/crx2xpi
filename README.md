@@ -52,10 +52,24 @@ Example session with `--verbose`:
 ![crx2xpi CLI converting a CRX3 sample in a terminal](./docs/cli-screenshot.png)
 
 The CLI exits with code `0` on success and `1` on usage or conversion errors.
-Bundled polyfill: the packaged XPI ships Mozilla's official
-[`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)
-(MPL-2.0, see [NOTICE](./NOTICE)); the injected entry is always evaluated
-first in `background.scripts`.
+Bundled compatibility assets: the packaged XPI ships two entries that are
+always evaluated first in `background.scripts`:
+
+1. `chrome-promise-shim.js` — Firefox keeps the `chrome` namespace
+   callback-only, while Chrome MV3 code calls `await chrome.*`. On Firefox the
+   shim aliases `chrome` to the promise-capable `browser` namespace, restoring
+   Chromium calling semantics without touching the original extension code.
+   Without it, converted extensions load and report no errors but their
+   promise-style API calls silently resolve to `undefined`.
+2. [`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)
+   (MPL-2.0, see [NOTICE](./NOTICE)) — Mozilla's official polyfill for code
+   that references the promise-based `browser.*` API; a no-op where `browser`
+   already exists natively.
+
+This behavior was verified end-to-end: the open-source CookieMop extension,
+converted by `crx2xpi`, deletes its cookies for real when a tab closes in
+Firefox (including HttpOnly cookies), which requires the promise shim to be in
+place.
 
 ## How to install the generated XPI (Installation)
 
