@@ -19,10 +19,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # pnpm version is sourced from package.json `packageManager` to avoid
+      # the "Multiple versions of pnpm specified" error from action-setup.
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          run_install: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
