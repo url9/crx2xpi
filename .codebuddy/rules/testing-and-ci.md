@@ -12,6 +12,18 @@ paths: tests/**/*.ts,.github/workflows/**/*.yml
 - Unit-test each rewrite/parse rule in isolation with fresh fixtures.
 - Cover the happy path, idempotency, and no-op cases (e.g. MV2 left untouched).
 
+## Real-sample fixture naming (mandatory)
+
+- Every extension binary checked into the repository (fixtures, samples) MUST
+  be named `<extension-name> (<developer>).<ext>`: the base name, ONE space,
+  then the developer/publisher name inside ASCII half-width parentheses.
+- Examples: `chrome-remote-desktop (Google).crx`,
+  `digital-memory (pankajdhameliya).crx`, `sample-mv3 (crx2xpi).crx`.
+- For synthetic samples produced by this project, use `crx2xpi` as the
+  developer name. The rule covers both `.crx` inputs and `.xpi` artifacts.
+- Integration tests reference fixtures by this exact name so a rename without
+  updating tests fails loudly.
+
 ## Required local checks before finishing
 
 ```bash
