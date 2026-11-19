@@ -8,9 +8,52 @@ header, rewrites MV3-specific manifest fields (notably the `service_worker`
 downgrade), and injects the `webextension-polyfill` before packaging a signed-ready
 XPI.
 
-> **Status:** early scaffolding. The conversion engine is not implemented yet —
-> only the project standards, tooling, and the first manifest-parser unit are in
-> place. See [CONTRIBUTING.md](./CONTRIBUTING.md) to help build it.
+> **Status:** the conversion engine and CLI are working end to end. CRX3
+> unpacking, the MV3 `service_worker` downgrade, polyfill injection, and XPI
+> repacking are implemented and covered by unit, integration (real CRX3
+> sample), and CLI tests. See [CONTRIBUTING.md](./CONTRIBUTING.md) to help
+> improve it.
+
+## CLI usage
+
+Install globally, run with `npx`, or use it directly from a checkout:
+
+```bash
+# After installing from npm (once published) or via a global install
+npx crx2xpi my-extension.crx my-extension.xpi
+
+# Verbose mode prints every conversion stage
+npx crx2xpi --verbose my-extension.crx my-extension.xpi
+
+# Keep the extracted payload directory on disk for debugging
+npx crx2xpi --keep-temp my-extension.crx my-extension.xpi
+```
+
+From a repository checkout, run the built binary directly:
+
+```bash
+pnpm build
+node dist/cli.js --verbose sample.crx out/sample.xpi
+```
+
+Options:
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `<input.crx>` | — | Source Chrome CRX3 extension file. |
+| `<output.xpi>` | — | Destination Firefox XPI add-on file (parent directories are created). |
+| `--verbose` | `-v` | Print detailed progress: header validation, manifest parsing, polyfill injection, repacking. |
+| `--keep-temp` | `-k` | Keep the extracted payload directory for debugging; its path is printed on success. |
+
+Example session with `--verbose`:
+
+![crx2xpi CLI converting a CRX3 sample in a terminal](./docs/cli-screenshot.png)
+
+The CLI exits with code `0` on success and `1` on usage or conversion errors.
+Bundled polyfill: the packaged XPI ships Mozilla's official
+[`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)
+(MPL-2.0, see [NOTICE](./NOTICE)); the injected entry is always evaluated
+first in `background.scripts`.
 
 ## License
 
