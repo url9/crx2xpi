@@ -139,6 +139,17 @@ npx crx2xpi downloaded.crx downloaded.xpi
 
 商店 ID 可方便地作为上文安装章节所述 Firefox 扩展 ID（`browser_specific_settings.gecko.id`）的基础。这两个扩展均归各自开发者所有，`crx2xpi` 与其无关联，以上链接仅供测试使用。
 
+### 实际效果
+
+同一个 MV3 扩展——源码完全一致，仅容器格式不同——左侧是在 Chrome 中原生运行的 CRX，右侧是经 `crx2xpi` 转换后在 Firefox 中运行的 XPI。注入的横幅会显示实时运行环境：Chrome 版本使用基于回调的 `chrome.*` API 与 MV3 service worker；转换后的 XPI 则以非持久化的 `background.scripts` 运行，并通过 Mozilla 的 `browser.*` Promise polyfill 桥接 API。
+
+<p align="center">
+  <img src="./docs/demo-chrome.gif" alt="原始 CRX 在 Chrome 中运行的 MV3 扩展" width="48%" />
+  <img src="./docs/demo-firefox.gif" alt="同一扩展经转换后在 Firefox 中运行的 XPI" width="48%" />
+</p>
+
+<p align="center"><sub>转换前：Chrome 中的原始 CRX　·　转换后：Firefox 中的 XPI</sub></p>
+
 ## 提交规范（Conventional Commits）
 
 每笔提交都由 Husky 的 `commit-msg` 钩子通过 `commitlint` 校验。

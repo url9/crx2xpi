@@ -189,6 +189,22 @@ The Store ID can serve as a convenient base for the Firefox extension ID
 above. Both extensions belong to their respective developers; `crx2xpi` is not
 affiliated with them, and these links are provided for testing only.
 
+### See it in action
+
+The same MV3 extension — identical source, only the container differs — running
+natively as a Chrome CRX (left) and as a Firefox XPI produced by `crx2xpi`
+(right). The injected banner reports the live runtime: the Chrome build uses the
+callback-based `chrome.*` API with an MV3 service worker, while the converted
+XPI runs non-persistent `background.scripts` with Mozilla's `browser.*` promise
+polyfill.
+
+<p align="center">
+  <img src="./docs/demo-chrome.gif" alt="Chrome MV3 extension running from the original CRX" width="48%" />
+  <img src="./docs/demo-firefox.gif" alt="Same extension running from the converted XPI in Firefox" width="48%" />
+</p>
+
+<p align="center"><sub>Before: original CRX in Chrome · After: converted XPI in Firefox</sub></p>
+
 ## Commit convention (Conventional Commits)
 
 Every commit is validated by `commitlint` through a Husky `commit-msg` hook.
