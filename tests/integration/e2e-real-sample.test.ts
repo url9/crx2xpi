@@ -35,6 +35,99 @@ afterEach(() => {
   rmSync(workDir, { recursive: true, force: true });
 });
 
+/**
+ * Second end-to-end fixture: an OFFICIAL Chrome Web Store CRX3 (Google's
+ * Chrome Remote Desktop) with a genuine Google-signed header protobuf. This
+ * exercises production layout the synthetic sample cannot: a large signed
+ * header (1309 bytes) and a `_metadata/` verified-contents entry.
+ *
+ * Source: Chrome Web Store download, kept verbatim.
+ */
+const CWS_FIXTURE_PATH = new URL('../fixtures/chrome-remote-desktop.crx', import.meta.url);
+// The `_metadata/` directory entry is a directory marker, not file content;
+// it is asserted as present but excluded from byte-for-byte file comparisons.
+const CWS_PAYLOAD_FILES = [
+  '_metadata/',
+  '_metadata/verified_contents.json',
+  'chromoting128.png',
+  'chromoting48.png',
+  'event_page_binary.js',
+  'manifest.json',
+];
+const CWS_UNTOUCHED_FILES = [
+  '_metadata/verified_contents.json',
+  'chromoting128.png',
+  'chromoting48.png',
+  'event_page_binary.js',
+];
+
+describe('e2e: official Chrome Web Store CRX3 sample', () => {
+  const cwsBytes = (): Buffer => readFileSync(CWS_FIXTURE_PATH);
+
+  it('fixture is a genuine Google-signed CRX3 container', () => {
+    const bytes = cwsBytes();
+    expect(bytes.subarray(0, 4).toString('ascii')).toBe('Cr24');
+    expect(parseCrx3Header(bytes)).toMatchObject({ headerLength: 1309, payloadOffset: 1321 });
+
+    const payload = new AdmZip(extractCrxZipPayload(bytes));
+    expect(
+      payload
+        .getEntries()
+        .map((e) => e.entryName)
+        .sort()
+    ).toEqual(CWS_PAYLOAD_FILES);
+  });
+
+  it('converts the official MV3 extension and downgrades its service worker', () => {
+    const crxPath = join(workDir, 'chrome-remote-desktop.crx');
+    const outputPath = join(workDir, 'chrome-remote-desktop.xpi');
+    writeFileSync(crxPath, cwsBytes());
+
+    const result = convertCrxToXpi(crxPath, outputPath);
+
+    expect(result).toEqual({
+      outputPath,
+      manifestName: 'Chrome Remote Desktop',
+      manifestVersion: 3,
+      downgraded: true,
+    });
+
+    const xpi = new AdmZip(readFileSync(outputPath));
+    const manifest = JSON.parse(xpi.readAsText('manifest.json')) as {
+      background?: { scripts?: string[]; persistent?: boolean; service_worker?: string };
+    };
+
+    // Google's production worker must land behind the polyfill in the
+    // event-page scripts form; the Chromium-only field disappears.
+    expect(manifest.background).toEqual({
+      scripts: [POLYFILL_ENTRY_NAME, 'event_page_binary.js'],
+      persistent: false,
+    });
+    expect(manifest.background?.service_worker).toBeUndefined();
+    expect(xpi.getEntry(POLYFILL_ENTRY_NAME)).not.toBeNull();
+  });
+
+  it('preserves the signed metadata and every non-manifest file byte-for-byte', () => {
+    const crxPath = join(workDir, 'chrome-remote-desktop.crx');
+    const outputPath = join(workDir, 'chrome-remote-desktop.xpi');
+    writeFileSync(crxPath, cwsBytes());
+
+    convertCrxToXpi(crxPath, outputPath);
+
+    const original = new AdmZip(extractCrxZipPayload(cwsBytes()));
+    const converted = new AdmZip(readFileSync(outputPath));
+
+    for (const name of CWS_UNTOUCHED_FILES) {
+      const before = original.getEntry(name)?.getData();
+      const after = converted.getEntry(name)?.getData();
+      expect(after, `${name} must survive conversion`).toBeDefined();
+      // Includes _metadata/verified_contents.json: repackaging may not break
+      // Google's content-verified payload, or Web Store updates would fail.
+      expect(Buffer.compare(before as Buffer, after as Buffer)).toBe(0);
+    }
+  });
+});
+
 describe('e2e: real CRX3 sample conversion', () => {
   const fixtureBytes = (): Buffer => readFileSync(FIXTURE_PATH);
 
