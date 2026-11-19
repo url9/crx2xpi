@@ -1,7 +1,7 @@
 ---
 description: webextension-polyfill injection rules — order and priority rationale comments. Apply when working on polyfill injection code.
 alwaysApply: false
-paths: src/**/*polyfill*.ts
+paths: src/**/*polyfill*.ts,src/core/**/*.ts
 ---
 
 # webextension-polyfill injection rules

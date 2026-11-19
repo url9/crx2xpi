@@ -1,7 +1,7 @@
 ---
 description: CRX3 header parsing rules — magic bytes, offsets, and required inline comments. Apply when working on CRX3 header / container code.
 alwaysApply: false
-paths: src/crx3/**/*.ts
+paths: src/crx3/**/*.ts,src/core/**/*.ts
 ---
 
 # CRX3 parsing rules

@@ -20,8 +20,11 @@ recursively.
    `i++ // increment i` is forbidden.
 6. **Single responsibility.** A parsing function over 50 lines must be split,
    with a header comment describing the parsing steps.
-7. **No conversion engine code yet.** This phase is scaffolding only; do not
-   implement CRX3→XPI conversion logic beyond the tested manifest-parser unit.
+7. **Conversion engine scope.** The engine lives in `src/core/`; CRX3
+   container parsing must follow `rules/crx3-parsing.md`, manifest rewriting
+   `rules/manifest-rewrite.md`, and polyfill injection
+   `rules/polyfill-injection.md`. Every new capability lands with dedicated
+   typed errors and unit tests.
 
 ## Required commands before declaring work done
 
