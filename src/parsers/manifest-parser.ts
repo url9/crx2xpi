@@ -8,7 +8,7 @@
  */
 export interface WebExtensionManifest {
   /** Manifest specification version (2 or 3 for the supported targets). */
-  manifest_version: number;
+  manifest_version: 2 | 3;
   /** Add-on display name; required by both MV2 and MV3. */
   name: string;
   /** Add-on version string; required by both MV2 and MV3. */
