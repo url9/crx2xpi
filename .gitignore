@@ -32,3 +32,6 @@ pnpm-debug.log*
 *.xpi
 *.crx
 *.zip
+
+# Checked-in CRX3 test fixtures are real sample containers, not build output
+!tests/fixtures/*.crx

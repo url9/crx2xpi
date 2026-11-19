@@ -42,4 +42,6 @@ alwaysApply: true
 - `any` abuse, `@ts-ignore`, unchecked non-null assertions used to silence errors.
 - Meaningless comments (`i++ // increment i`).
 - Committing generated artifacts (`dist/`, `node_modules/`, `*.xpi`, `*.crx`).
+  Exception: real CRX3 samples under `tests/fixtures/` are checked-in test
+  fixtures and must be committed.
 - Hard-coding secrets or tokens in any tracked file.
