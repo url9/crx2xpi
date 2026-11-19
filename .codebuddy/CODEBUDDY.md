@@ -20,7 +20,12 @@ recursively.
    `i++ // increment i` is forbidden.
 6. **Single responsibility.** A parsing function over 50 lines must be split,
    with a header comment describing the parsing steps.
-7. **Conversion engine scope.** The engine lives in `src/core/`; CRX3
+7. **Repository language is English.** All committed content — docs, TSDoc,
+   comments, commit messages, identifiers — is English. If the user supplies
+   text in another language (e.g. Chinese), translate it into English **before**
+   writing it to the repository; never paste foreign-language prose into
+   tracked files. Chat replies may follow the user's language.
+8. **Conversion engine scope.** The engine lives in `src/core/`; CRX3
    container parsing must follow `rules/crx3-parsing.md`, manifest rewriting
    `rules/manifest-rewrite.md`, and polyfill injection
    `rules/polyfill-injection.md`. Every new capability lands with dedicated
@@ -41,7 +46,8 @@ CI runs all of the above plus `pnpm build` on every push and PR to `main`.
 
 - `rules/engineering-standards.md` — always applied: commits, TS strictness,
   function size, forbidden patterns.
-- `rules/jsdoc-and-comments.md` — always applied: documentation and comment style.
+- `rules/jsdoc-and-comments.md` — always applied: documentation and comment
+  style, and the English-only repository language rule.
 - `rules/crx3-parsing.md` — CRX3 header/magic-byte comment requirements.
 - `rules/manifest-rewrite.md` — service_worker downgrade rationale comments.
 - `rules/polyfill-injection.md` — polyfill injection order comments.

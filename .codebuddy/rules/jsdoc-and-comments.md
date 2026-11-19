@@ -5,6 +5,24 @@ alwaysApply: true
 
 # JSDoc / TSDoc and comment style (always applied)
 
+## Repository language is English
+
+All content committed to the repository is written in English: README and
+other Markdown docs, TSDoc blocks, inline comments, commit messages, and
+identifiers. This keeps an international open-source project consistent and
+grep-friendly.
+
+- When the user provides prose in another language (for example Chinese) and
+  asks for it to be added to the repository, **translate it into English first**.
+  Never paste foreign-language prose into a tracked file.
+- Preserve the requested structure (headings, ordered lists, tables) and all
+  verified technical facts when translating; only the language changes.
+- Conversational replies in chat may use the user's language — this rule
+  applies only to files that become part of the repository.
+- Before committing docs, sanity-check for stray non-ASCII CJK characters in
+  text files; natural-language prose must not contain them (they are fine in
+  fixture data, license text, or user-supplied binary samples).
+
 ## Mandatory TSDoc on exported symbols
 
 Every **exported** function, interface, class, type alias, and enum must carry a
