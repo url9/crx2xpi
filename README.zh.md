@@ -122,6 +122,23 @@ pnpm format:check  # Prettier 格式检查
 pnpm build         # 编译到 dist/
 ```
 
+## 测试样本
+
+自动化集成测试仅使用一个自造的 MV3 样本 `tests/fixtures/sample-mv3 (crx2xpi).crx`，这也是本仓库中唯一入库的扩展二进制文件。若需针对更贴近真实生产形态的扩展做手动测试，请从以下官方渠道自行获取 CRX——本仓库不重新分发这些第三方二进制文件。
+
+| 扩展 | 开发者 | Chrome 商店 | 官网 / 隐私说明 | 商店 ID |
+| --- | --- | --- | --- | --- |
+| Chrome Remote Desktop | Google | [商店](https://chromewebstore.google.com/detail/chrome-remote-desktop/inomeogfingihgjfjlpeplalcfajhgai) | [remotedesktop.google.com](https://remotedesktop.google.com/) | `inomeogfingihgjfjlpeplalcfajhgai` |
+| Digital Memory | pankajdhameliya | [商店](https://chromewebstore.google.com/detail/digital-memory/hbnbcofaojadjfdedmlhdcjmbjjlnhhj) | [隐私说明](https://digitalmemory.netlify.app/privacy-policy) | `hbnbcofaojadjfdedmlhdcjmbjjlnhhj` |
+
+从上述任一渠道下载 CRX 后，按常规方式转换即可：
+
+```bash
+npx crx2xpi downloaded.crx downloaded.xpi
+```
+
+商店 ID 可方便地作为上文安装章节所述 Firefox 扩展 ID（`browser_specific_settings.gecko.id`）的基础。这两个扩展均归各自开发者所有，`crx2xpi` 与其无关联，以上链接仅供测试使用。
+
 ## 提交规范（Conventional Commits）
 
 每笔提交都由 Husky 的 `commit-msg` 钩子通过 `commitlint` 校验。

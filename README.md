@@ -165,6 +165,30 @@ pnpm format:check  # Prettier formatting check
 pnpm build         # compile to dist/
 ```
 
+## Test samples
+
+The automated integration suite ships one self-generated MV3 fixture,
+`tests/fixtures/sample-mv3 (crx2xpi).crx` — the only extension binary in this
+repository. For manual testing against production-shaped extensions, fetch a
+CRX yourself from the official sources below; their binaries are **not**
+redistributed here.
+
+| Extension | Developer | Chrome Web Store | Official site / privacy | Store ID |
+| --- | --- | --- | --- | --- |
+| Chrome Remote Desktop | Google | [Store](https://chromewebstore.google.com/detail/chrome-remote-desktop/inomeogfingihgjfjlpeplalcfajhgai) | [remotedesktop.google.com](https://remotedesktop.google.com/) | `inomeogfingihgjfjlpeplalcfajhgai` |
+| Digital Memory | pankajdhameliya | [Store](https://chromewebstore.google.com/detail/digital-memory/hbnbcofaojadjfdedmlhdcjmbjjlnhhj) | [Privacy policy](https://digitalmemory.netlify.app/privacy-policy) | `hbnbcofaojadjfdedmlhdcjmbjjlnhhj` |
+
+Download a CRX from one of the sources above, then convert it like any other:
+
+```bash
+npx crx2xpi downloaded.crx downloaded.xpi
+```
+
+The Store ID can serve as a convenient base for the Firefox extension ID
+(`browser_specific_settings.gecko.id`) discussed in the installation section
+above. Both extensions belong to their respective developers; `crx2xpi` is not
+affiliated with them, and these links are provided for testing only.
+
 ## Commit convention (Conventional Commits)
 
 Every commit is validated by `commitlint` through a Husky `commit-msg` hook.
