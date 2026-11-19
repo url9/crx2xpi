@@ -50,13 +50,13 @@ CLI 成功时退出码为 `0`，用法或转换错误时为 `1`。
 
 ## 如何安装生成的 XPI
 
-> 根据 Mozilla 官方的安全策略，未经其服务器签名的扩展无法直接安装在 Firefox 正式版中。请根据使用场景选择以下方式：
+> 在桌面端 Release 和 Beta 中，未经 Mozilla 签名的扩展无法安装。而在 Android 上，「从文件安装」菜单接受未签名的包，因此只有在官方分发或桌面 Release 上安装时才必须进行 AMO 签名。请根据使用场景选择以下方式：
 >
 > **前提**：除 `about:debugging` 临时载入外，所有安装方式（Android 从文件安装、AMO 签名）都要求 XPI 的 `manifest.json` 中包含扩展 ID（`browser_specific_settings.gecko.id`）。若源扩展未声明该字段，请在转换后的 manifest 中手动补上（例如 `"id": "@your-extension-id"`）。
 
 ### 场景一：桌面端测试（Firefox Developer Edition / Nightly / ESR）
 
-签名豁免开关仅在这三个渠道生效；正式版（Release）与 Beta 在构建层面移除了该开关，修改无效。
+签名豁免开关仅在这三个渠道生效；正式版（Release）与 Beta 按策略忽略该偏好设置，修改无效。
 
 1. 打开 Firefox，在地址栏输入 `about:config` 并回车，接受风险提示。
 2. 搜索 `xpinstall.signatures.required`，双击将其值改为 `false`。
@@ -74,7 +74,7 @@ Android 版没有 `about:config`，因此不存在桌面的关签名路径，取
 
 ### 场景三：永久安装（桌面 / 移动通用）
 
-AMO 签名是在 Release 与 Beta 上安装的唯一官方途径。提交时有两种渠道可选：
+AMO 签名是在 Release 与 Beta 上永久安装的唯一官方途径。对于桌面 Release，这更是唯一路径——签名豁免在此无效，临时载入也会在重启后失效。提交时有两种渠道可选：
 
 - **unlisted**（自分发，不上架 AMO）：仅走自动化审核，通常数秒到数分钟完成签名——适合私有分发，也是绝大多数测试场景的选择。
 - **listed**（公开上架）：需人工审核后才会公开显示，适合正式发布。
@@ -90,11 +90,13 @@ AMO 签名是在 Release 与 Beta 上安装的唯一官方途径。提交时有�
 
 | 方式 | 桌面 Release | 桌面 Beta | 桌面 Dev / Nightly / ESR | Android（全渠道） | GeckoView 宿主浏览器 |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| AMO 签名（listed / unlisted） | ✅ | ✅ | ✅ | ✅ | 无需 |
-| 关闭签名 `xpinstall.signatures.required=false` | ❌ 被忽略 | ❌ 被忽略 | ✅ | ❌ 无 `about:config` | ❌ 不强制 |
-| `about:debugging` 临时载入 | ❌ | ❌ | ✅ | ❌ | 取决于宿主 |
-| 5 连点「从文件安装扩展」 | — | — | — | ✅（Firefox 122+、Android 10+） | 取决于宿主 |
+| AMO 签名（listed / unlisted） | ✅ | ✅ | ✅ | ✅ | N/A（无需） |
+| 关闭签名 `xpinstall.signatures.required=false` | ❌ 被忽略 | ❌ 被忽略 | ✅ | ❌ 无 `about:config` | N/A（不强制） |
+| `about:debugging` 临时载入 | ❌ | ❌ | ✅ | ❌ | N/A（取决于宿主） |
+| 5 连点「从文件安装扩展」 | N/A | N/A | N/A | ✅（Firefox 122+、Android 10+） | N/A（取决于宿主） |
 | 宿主直接加载 XPI 文件 | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+表中符号：✅ = 可用，❌ = 被禁用或无效，N/A = 不适用。
 
 口诀：**桌面看渠道（豁免仅存在于 Dev / Nightly / ESR）、移动看连点（没有配置编辑器）、内嵌看宿主**——签名强制是 Firefox 的发行版策略，而非 Gecko 引擎策略。基于 GeckoView 的第三方浏览器壳不受 Mozilla 签名要求约束，可直接加载转换产物。
 

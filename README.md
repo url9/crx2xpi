@@ -59,9 +59,11 @@ first in `background.scripts`.
 
 ## How to install the generated XPI (Installation)
 
-> Under Mozilla's official security policy, extensions that are not signed by
-> its servers cannot be installed in release versions of Firefox. Choose the
-> method that fits your scenario below:
+> On desktop Release and Beta, extensions not signed by Mozilla cannot be
+> installed. On Android, the "install from file" menu accepts unsigned
+> packages, so AMO signing is only required for official distribution or
+> installation on desktop Release. Choose the method that fits your scenario
+> below:
 >
 > **Prerequisite**: except for `about:debugging` temporary loading, every
 > installation method (Android install-from-file, AMO signing) requires an
@@ -73,8 +75,7 @@ first in `background.scripts`.
 ### Scenario 1: Desktop testing (Firefox Developer Edition / Nightly / ESR)
 
 The signature-enforcement override only works in those three channels.
-Release and Beta remove the preference at build time, so toggling it has no
-effect.
+Release and Beta ignore this preference by policy, so toggling it has no effect.
 
 1. Open Firefox, type `about:config` in the address bar, press Enter, and
    accept the risk notice.
@@ -100,8 +101,10 @@ this works in the release channel too (requires Android 10 or later):
 
 ### Scenario 3: Permanent installation (desktop and mobile)
 
-AMO signing is the only official path for installation in Release and Beta.
-Two channels are available when submitting:
+AMO signing is the only official path for permanent installation in Release and
+Beta. On desktop Release specifically, it is the only path — the signing
+override does not work there and temporary loads do not survive a restart. Two
+channels are available when submitting:
 
 - **unlisted** (self-distributed, not published on AMO): automated review only,
   usually signed within seconds to minutes — ideal for private distribution
@@ -125,11 +128,13 @@ Steps:
 
 | Method | Desktop Release | Desktop Beta | Desktop Dev / Nightly / ESR | Android (all channels) | GeckoView-hosted browsers |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| AMO signing (listed / unlisted) | ✅ | ✅ | ✅ | ✅ | Not needed |
-| Disable signing `xpinstall.signatures.required=false` | ❌ ignored | ❌ ignored | ✅ | ❌ no `about:config` | ❌ not enforced |
-| `about:debugging` temporary load | ❌ | ❌ | ✅ | ❌ | Host-dependent |
-| 5-tap "Install Extension from File" | — | — | — | ✅ (Firefox 122+, Android 10+) | Host-dependent |
+| AMO signing (listed / unlisted) | ✅ | ✅ | ✅ | ✅ | N/A (not needed) |
+| Disable signing `xpinstall.signatures.required=false` | ❌ ignored | ❌ ignored | ✅ | ❌ no `about:config` | N/A (not enforced) |
+| `about:debugging` temporary load | ❌ | ❌ | ✅ | ❌ | N/A (host-dependent) |
+| 5-tap "Install Extension from File" | N/A | N/A | N/A | ✅ (Firefox 122+, Android 10+) | N/A (host-dependent) |
 | Host loads the XPI file directly | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+In this table: ✅ = supported, ❌ = blocked or ineffective, N/A = not applicable.
 
 Rule of thumb: **on desktop, check the channel (the override only exists in
 Dev / Nightly / ESR); on mobile, count the taps (there is no config editor);
