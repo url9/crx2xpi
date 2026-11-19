@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { downgradeServiceWorker, type WebExtensionManifest } from '../src/manifest/parser.js';
+import {
+  downgradeServiceWorker,
+  type WebExtensionManifest,
+} from '../../src/parsers/manifest-parser.js';
 
 /**
  * Build a fresh MV3 manifest fixture so each test starts from an isolated object.
