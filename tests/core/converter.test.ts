@@ -148,6 +148,37 @@ describe('convertCrxToXpi', () => {
     expect(xpi.readAsText('background.js')).toBe('init();');
   });
 
+  it('preserves background.type=module so a downgraded worker can use static import', () => {
+    const crxPath = join(workDir, 'module.crx');
+    const outputPath = join(workDir, 'module.xpi');
+    const moduleManifest: Record<string, unknown> = {
+      ...MV3_MANIFEST,
+      background: { service_worker: 'background.js', type: 'module' },
+    };
+    writeFileSync(
+      crxPath,
+      buildCrx3(
+        makeExtensionZip(moduleManifest, {
+          'background.js': 'import { x } from "./chunk.js"; console.log(x);',
+          'chunk.js': 'export const x = 1;',
+        })
+      )
+    );
+
+    convertCrxToXpi(crxPath, outputPath);
+
+    const rewritten = JSON.parse(new AdmZip(outputPath).readAsText('manifest.json')) as {
+      background?: { scripts?: string[]; type?: string };
+    };
+    // Without type:"module" Firefox parses the import as classic-script syntax
+    // and throws SyntaxError, so the background would never start.
+    expect(rewritten.background).toEqual({
+      scripts: [POLYFILL_ENTRY_NAME, 'background.js'],
+      persistent: false,
+      type: 'module',
+    });
+  });
+
   it('ships the official Mozilla webextension-polyfill bundle', () => {
     const crxPath = join(workDir, 'demo.crx');
     const outputPath = join(workDir, 'demo.xpi');

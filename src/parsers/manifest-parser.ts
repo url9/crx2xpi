@@ -21,6 +21,8 @@ export interface WebExtensionManifest {
     scripts?: string[];
     /** Legacy flag retained for MV2 compatibility. */
     persistent?: boolean;
+    /** Whether background scripts are ES modules (needed for `import`). */
+    type?: 'classic' | 'module';
   };
   /** Any other manifest fields are preserved verbatim. */
   [key: string]: unknown;
@@ -37,6 +39,13 @@ export interface GeckoBackgroundConfig {
   scripts: string[];
   /** Firefox uses event pages; a persistent background page is never wanted. */
   persistent: boolean;
+  /**
+   * ES-module flag carried over from the source worker. An MV3 `service_worker`
+   * with `type: "module"` uses static `import`; loading those scripts as
+   * classic scripts throws SyntaxError in Firefox, so the flag must survive
+   * the downgrade. Absent when the source worker was classic.
+   */
+  type?: 'classic' | 'module';
 }
 
 /**
@@ -130,7 +139,7 @@ function assertManifestVersion(value: unknown): asserts value is 2 | 3 {
 function parseBackground(
   value: unknown,
   manifestVersion: 2 | 3
-): { service_worker?: string; scripts?: string[] } | undefined {
+): { service_worker?: string; scripts?: string[]; type?: 'classic' | 'module' } | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -143,13 +152,38 @@ function parseBackground(
 
   const serviceWorker = parseOptionalWorker(value.service_worker);
   const scripts = parseScripts(value.scripts);
+  const type = parseBackgroundType(value.type);
 
   // Conditional spread instead of assigning undefined: exactOptionalPropertyTypes
   // forbids explicitly setting an optional property to undefined.
   return {
     ...(serviceWorker === undefined ? {} : { service_worker: serviceWorker }),
     ...(scripts === undefined ? {} : { scripts }),
+    ...(type === undefined ? {} : { type }),
   };
+}
+
+/**
+ * Validate the optional `background.type` module flag.
+ *
+ * Chrome uses this to mark an MV3 worker as an ES module. It must be narrowed
+ * before it can be copied into the Gecko downgrade: an unchecked string would
+ * let arbitrary values reach the rewritten manifest.
+ *
+ * @param value - Untrusted `background.type` value.
+ * @returns The validated flag, or undefined when not declared.
+ * @throws {ManifestValidationError} When the value is neither classic nor module.
+ */
+function parseBackgroundType(value: unknown): 'classic' | 'module' | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value !== 'classic' && value !== 'module') {
+    throw new ManifestValidationError(
+      'manifest.background.type must be "classic" or "module" when present'
+    );
+  }
+  return value;
 }
 
 /**
@@ -241,6 +275,9 @@ export function parseManifest(manifestRaw: unknown): ManifestParseResult {
     ? {
         scripts: existingScripts.includes(worker) ? existingScripts : [...existingScripts, worker],
         persistent: false,
+        // A module worker's static `import` statements only parse when the
+        // downgraded event-page scripts are also loaded as ES modules.
+        ...(background?.type === undefined ? {} : { type: background.type }),
       }
     : undefined;
 

@@ -24,6 +24,8 @@ interface SampleSpec {
   manifestName: string;
   /** The MV3 service_worker entry the downgrade must move into scripts. */
   serviceWorker: string;
+  /** Expected background.type in the downgraded manifest, when declared. */
+  backgroundType?: 'classic' | 'module';
   /** Files verified byte-for-byte after conversion; manifest excluded. */
   untouchedFiles: string[];
 }
@@ -115,6 +117,9 @@ const SAMPLES: SampleSpec[] = [
     ],
     manifestName: 'Digital Memory',
     serviceWorker: 'background.js',
+    // The source worker is an ES module (static `import`); the flag must be
+    // preserved or Firefox throws SyntaxError and the background never starts.
+    backgroundType: 'module',
     untouchedFiles: [
       '_metadata/verified_contents.json',
       'assets/pdf.worker.min.mjs',
@@ -181,14 +186,21 @@ function registerRealSampleSuite(spec: SampleSpec): void {
 
       const xpi = new AdmZip(readFileSync(outputPath));
       const manifest = JSON.parse(xpi.readAsText('manifest.json')) as {
-        background?: { scripts?: string[]; persistent?: boolean; service_worker?: string };
+        background?: {
+          scripts?: string[];
+          persistent?: boolean;
+          service_worker?: string;
+          type?: 'classic' | 'module';
+        };
       };
 
       // The Chromium-only service_worker must be gone, replaced by the
-      // event-page scripts form with the polyfill evaluated first.
+      // event-page scripts form with the polyfill evaluated first. A module
+      // worker keeps its `type` so static `import` stays parseable in Firefox.
       expect(manifest.background).toEqual({
         scripts: [POLYFILL_ENTRY_NAME, spec.serviceWorker],
         persistent: false,
+        ...(spec.backgroundType === undefined ? {} : { type: spec.backgroundType }),
       });
       expect(manifest.background?.service_worker).toBeUndefined();
       expect(xpi.getEntry(POLYFILL_ENTRY_NAME)).not.toBeNull();

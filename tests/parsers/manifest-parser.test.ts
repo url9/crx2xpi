@@ -57,6 +57,23 @@ describe('parseManifest — happy path', () => {
     expect(result.geckoBackground?.persistent).toBe(false);
   });
 
+  it('carries a module worker type into the downgrade plan', () => {
+    const raw: WebExtensionManifest = {
+      ...makeMv3Manifest(),
+      background: { service_worker: 'sw.js', type: 'module' },
+    };
+
+    const result = parseManifest(raw);
+
+    // Static `import` in the worker only parses in Firefox when the downgraded
+    // scripts are also marked as modules.
+    expect(result.geckoBackground).toEqual({
+      scripts: ['sw.js'],
+      persistent: false,
+      type: 'module',
+    });
+  });
+
   it('does not mutate the raw input object', () => {
     const raw = makeMv3Manifest();
 
@@ -123,6 +140,12 @@ describe('parseManifest — missing / invalid fields', () => {
     const raw = { ...makeMv3Manifest(), background: { service_worker: 7 } };
 
     expect(() => parseManifest(raw)).toThrow(/service_worker/);
+  });
+
+  it('rejects a background.type that is neither classic nor module', () => {
+    const raw = { ...makeMv3Manifest(), background: { service_worker: 'sw.js', type: 'worker' } };
+
+    expect(() => parseManifest(raw)).toThrow(/background.type/);
   });
 
   it('rejects background.scripts containing non-string entries', () => {

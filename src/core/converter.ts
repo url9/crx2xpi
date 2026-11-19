@@ -300,6 +300,10 @@ function buildGeckoManifest(
       scripts: injectPolyfillScript(geckoBackground.scripts),
       // Firefox uses event pages, never a persistent background page.
       persistent: false,
+      // A module worker uses static `import`; without type:"module" Firefox
+      // loads these scripts as classic and throws SyntaxError on the first
+      // import, so the original worker's module flag must be preserved.
+      ...(geckoBackground.type === undefined ? {} : { type: geckoBackground.type }),
     },
   };
 }
