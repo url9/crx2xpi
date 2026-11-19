@@ -173,12 +173,21 @@ repository. For manual testing against production-shaped extensions, fetch a
 CRX yourself from the official sources below; their binaries are **not**
 redistributed here.
 
-| Extension | Developer | Chrome Web Store | Official site / privacy | Store ID |
-| --- | --- | --- | --- | --- |
-| Chrome Remote Desktop | Google | [Store](https://chromewebstore.google.com/detail/chrome-remote-desktop/inomeogfingihgjfjlpeplalcfajhgai) | [remotedesktop.google.com](https://remotedesktop.google.com/) | `inomeogfingihgjfjlpeplalcfajhgai` |
-| Digital Memory | pankajdhameliya | [Store](https://chromewebstore.google.com/detail/digital-memory/hbnbcofaojadjfdedmlhdcjmbjjlnhhj) | [Privacy policy](https://digitalmemory.netlify.app/privacy-policy) | `hbnbcofaojadjfdedmlhdcjmbjjlnhhj` |
+These candidates are open source, work locally without an account or server,
+and — at the time of writing — have no official Firefox listing on Mozilla
+Add-ons (so a CRX-to-XPI conversion is actually useful). All are MIT licensed.
 
-Download a CRX from one of the sources above, then convert it like any other:
+| Extension | Developer | Chrome Web Store | Source | Store ID |
+| --- | --- | --- | --- | --- |
+| CookieMop | thoopring | [Store](https://chromewebstore.google.com/detail/cookiemop/nbehnialaodjcffgjkckbnocggbdmdel) | [GitHub](https://github.com/thoopring/cookiemop) | `nbehnialaodjcffgjkckbnocggbdmdel` |
+| Cursorfly | anugotta | [Store](https://chromewebstore.google.com/detail/cursorfly-screen-recorder/dediffcenkdgplheoefilljjpcmjgidp) | [GitHub](https://github.com/anugotta/cursorfly-screen-recorder) | `dediffcenkdgplheoefilljjpcmjgidp` |
+| Alt Text Auto-Fill | SoftwareforProgress | [Store](https://chromewebstore.google.com/detail/alt-text-auto-fill/ldgghfoheoipmffiidhcgjgnhmjnmkpc) | [GitHub](https://github.com/SoftwareforProgress/Alt-Text-Auto-Fill) | `ldgghfoheoipmffiidhcgjgnhmjnmkpc` |
+| Open Stay Focused | xingwudao | [Store](https://chromewebstore.google.com/detail/open-stay-focused/pmfcncldogcmehkdmoekagmlgcjcgpem) | [GitHub](https://github.com/xingwudao/open-stay-focused) | `pmfcncldogcmehkdmoekagmlgcjcgpem` |
+| Local iTab | 21888 | [Store](https://chromewebstore.google.com/detail/local-itab/hgcpfeedmndipealdcejckphlaicgjma) | [GitHub](https://github.com/21888/chrome-local-itab) | `hgcpfeedmndipealdcejckphlaicgjma` |
+
+The Chrome Web Store URL also serves as a CRX download source: open the store
+page, or use the extension ID with `clients2.google.com` to fetch the package.
+Then convert it like any other:
 
 ```bash
 npx crx2xpi downloaded.crx downloaded.xpi
@@ -186,24 +195,28 @@ npx crx2xpi downloaded.crx downloaded.xpi
 
 The Store ID can serve as a convenient base for the Firefox extension ID
 (`browser_specific_settings.gecko.id`) discussed in the installation section
-above. Both extensions belong to their respective developers; `crx2xpi` is not
-affiliated with them, and these links are provided for testing only.
+above. "No Firefox version" means there is no official Mozilla Add-ons entry;
+third-party conversions or unrelated same-name add-ons may still exist. These
+extensions belong to their respective developers; `crx2xpi` is not affiliated
+with them, and these links are provided for testing only.
 
 ### See it in action
 
-The same MV3 extension — identical source, only the container differs — running
-natively as a Chrome CRX (left) and as a Firefox XPI produced by `crx2xpi`
-(right). The injected banner reports the live runtime: the Chrome build uses the
-callback-based `chrome.*` API with an MV3 service worker, while the converted
-XPI runs non-persistent `background.scripts` with Mozilla's `browser.*` promise
-polyfill.
+A real third-party extension — [CookieMop](https://github.com/thoopring/cookiemop),
+an open-source MV3 add-on that clears cookies on tab close — running its actual
+popup UI in both browsers. Left: the original Chrome MV3 CRX, using the
+callback-based `chrome.*` API and a service worker. Right: the very same
+extension after `crx2xpi` conversion, running in Firefox as non-persistent
+`background.scripts` (with its `type: module` preserved) via Mozilla's
+`browser.*` promise polyfill. The colored bar labels the live runtime; the
+popup and its logic are CookieMop's unmodified source.
 
 <p align="center">
-  <img src="./docs/demo-chrome.gif" alt="Chrome MV3 extension running from the original CRX" width="48%" />
-  <img src="./docs/demo-firefox.gif" alt="Same extension running from the converted XPI in Firefox" width="48%" />
+  <img src="./docs/demo-chrome.gif" alt="CookieMop original CRX running in Chrome with chrome.* API" width="48%" />
+  <img src="./docs/demo-firefox.gif" alt="CookieMop converted XPI running in Firefox with browser.* polyfill" width="48%" />
 </p>
 
-<p align="center"><sub>Before: original CRX in Chrome · After: converted XPI in Firefox</sub></p>
+<p align="center"><sub>Before: original CookieMop CRX in Chrome · After: crx2xpi-converted XPI in Firefox</sub></p>
 
 ## Commit convention (Conventional Commits)
 

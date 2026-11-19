@@ -126,29 +126,34 @@ pnpm build         # 编译到 dist/
 
 自动化集成测试仅使用一个自造的 MV3 样本 `tests/fixtures/sample-mv3 (crx2xpi).crx`，这也是本仓库中唯一入库的扩展二进制文件。若需针对更贴近真实生产形态的扩展做手动测试，请从以下官方渠道自行获取 CRX——本仓库不重新分发这些第三方二进制文件。
 
-| 扩展 | 开发者 | Chrome 商店 | 官网 / 隐私说明 | 商店 ID |
-| --- | --- | --- | --- | --- |
-| Chrome Remote Desktop | Google | [商店](https://chromewebstore.google.com/detail/chrome-remote-desktop/inomeogfingihgjfjlpeplalcfajhgai) | [remotedesktop.google.com](https://remotedesktop.google.com/) | `inomeogfingihgjfjlpeplalcfajhgai` |
-| Digital Memory | pankajdhameliya | [商店](https://chromewebstore.google.com/detail/digital-memory/hbnbcofaojadjfdedmlhdcjmbjjlnhhj) | [隐私说明](https://digitalmemory.netlify.app/privacy-policy) | `hbnbcofaojadjfdedmlhdcjmbjjlnhhj` |
+以下候选均为开源、无需账号或服务器即可本地运行，且在撰写本文时 Mozilla Add-ons 上没有对应的官方 Firefox 版本（因此 CRX→XPI 转换确有实际价值）。它们均采用 MIT 许可。
 
-从上述任一渠道下载 CRX 后，按常规方式转换即可：
+| 扩展 | 开发者 | Chrome 商店 | 源码 | 商店 ID |
+| --- | --- | --- | --- | --- |
+| CookieMop | thoopring | [商店](https://chromewebstore.google.com/detail/cookiemop/nbehnialaodjcffgjkckbnocggbdmdel) | [GitHub](https://github.com/thoopring/cookiemop) | `nbehnialaodjcffgjkckbnocggbdmdel` |
+| Cursorfly | anugotta | [商店](https://chromewebstore.google.com/detail/cursorfly-screen-recorder/dediffcenkdgplheoefilljjpcmjgidp) | [GitHub](https://github.com/anugotta/cursorfly-screen-recorder) | `dediffcenkdgplheoefilljjpcmjgidp` |
+| Alt Text Auto-Fill | SoftwareforProgress | [商店](https://chromewebstore.google.com/detail/alt-text-auto-fill/ldgghfoheoipmffiidhcgjgnhmjnmkpc) | [GitHub](https://github.com/SoftwareforProgress/Alt-Text-Auto-Fill) | `ldgghfoheoipmffiidhcgjgnhmjnmkpc` |
+| Open Stay Focused | xingwudao | [商店](https://chromewebstore.google.com/detail/open-stay-focused/pmfcncldogcmehkdmoekagmlgcjcgpem) | [GitHub](https://github.com/xingwudao/open-stay-focused) | `pmfcncldogcmehkdmoekagmlgcjcgpem` |
+| Local iTab | 21888 | [商店](https://chromewebstore.google.com/detail/local-itab/hgcpfeedmndipealdcejckphlaicgjma) | [GitHub](https://github.com/21888/chrome-local-itab) | `hgcpfeedmndipealdcejckphlaicgjma` |
+
+Chrome 商店地址同时也是 CRX 下载来源：打开商店页面即可，或用扩展 ID 配合 `clients2.google.com` 获取安装包。之后按常规方式转换即可：
 
 ```bash
 npx crx2xpi downloaded.crx downloaded.xpi
 ```
 
-商店 ID 可方便地作为上文安装章节所述 Firefox 扩展 ID（`browser_specific_settings.gecko.id`）的基础。这两个扩展均归各自开发者所有，`crx2xpi` 与其无关联，以上链接仅供测试使用。
+商店 ID 可方便地作为上文安装章节所述 Firefox 扩展 ID（`browser_specific_settings.gecko.id`）的基础。“没有 Firefox 版本”指没有官方 Mozilla Add-ons 条目；不排除第三方手工转换包或同名无关扩展。这些扩展均归各自开发者所有，`crx2xpi` 与其无关联，以上链接仅供测试使用。
 
 ### 实际效果
 
-同一个 MV3 扩展——源码完全一致，仅容器格式不同——左侧是在 Chrome 中原生运行的 CRX，右侧是经 `crx2xpi` 转换后在 Firefox 中运行的 XPI。注入的横幅会显示实时运行环境：Chrome 版本使用基于回调的 `chrome.*` API 与 MV3 service worker；转换后的 XPI 则以非持久化的 `background.scripts` 运行，并通过 Mozilla 的 `browser.*` Promise polyfill 桥接 API。
+一个真实的第三方扩展——[CookieMop](https://github.com/thoopring/cookiemop)，一款在关闭标签页时清理 Cookie 的开源 MV3 扩展——在两个浏览器中运行其真实的 popup 界面。左侧为原始 Chrome MV3 CRX，使用基于回调的 `chrome.*` API 与 service worker；右侧为同一个扩展经 `crx2xpi` 转换后在 Firefox 中运行的版本，以非持久化的 `background.scripts`（保留 `type: module`）通过 Mozilla 的 `browser.*` Promise polyfill 运行。彩色横幅标注实时运行环境；popup 及其逻辑均为 CookieMop 未经修改的源码。
 
 <p align="center">
-  <img src="./docs/demo-chrome.gif" alt="原始 CRX 在 Chrome 中运行的 MV3 扩展" width="48%" />
-  <img src="./docs/demo-firefox.gif" alt="同一扩展经转换后在 Firefox 中运行的 XPI" width="48%" />
+  <img src="./docs/demo-chrome.gif" alt="CookieMop 原始 CRX 在 Chrome 中使用 chrome.* API 运行" width="48%" />
+  <img src="./docs/demo-firefox.gif" alt="CookieMop 转换后 XPI 在 Firefox 中使用 browser.* polyfill 运行" width="48%" />
 </p>
 
-<p align="center"><sub>转换前：Chrome 中的原始 CRX　·　转换后：Firefox 中的 XPI</sub></p>
+<p align="center"><sub>转换前：Chrome 中的原始 CookieMop CRX　·　转换后：Firefox 中的 crx2xpi 转换版 XPI</sub></p>
 
 ## 提交规范（Conventional Commits）
 
