@@ -20,7 +20,7 @@ Prerequisites:
 - pnpm **>= 9** (`corepack enable && corepack prepare pnpm@latest --activate`)
 
 ```bash
-git clone https://github.com/ckb66/crx2xpi.git
+git clone https://github.com/url9/crx2xpi.git
 cd crx2xpi
 pnpm install
 ```

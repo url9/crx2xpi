@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "description": "Convert Chrome MV3 extensions (CRX3) into Firefox/GeckoView-compatible XPI add-ons.",
   "license": "Apache-2.0",
-  "author": "ckb66 and the crx2xpi contributors",
+  "author": "url9 and the crx2xpi contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ckb66/crx2xpi.git"
+    "url": "git+https://github.com/url9/crx2xpi.git"
   },
   "bugs": {
-    "url": "https://github.com/ckb66/crx2xpi/issues"
+    "url": "https://github.com/url9/crx2xpi/issues"
   },
-  "homepage": "https://github.com/ckb66/crx2xpi#readme",
+  "homepage": "https://github.com/url9/crx2xpi#readme",
   "type": "module",
   "bin": {
     "crx2xpi": "dist/cli.js"
