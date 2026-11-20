@@ -8,7 +8,7 @@
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AdmZip from 'adm-zip';
 import type {
@@ -326,6 +326,80 @@ export function injectPolyfillScript(scripts: string[]): string[] {
 }
 
 /**
+ * Rewrite one extension HTML page so it loads the chrome alias shim first.
+ *
+ * WHY pages need the shim at all: Firefox exposes the `chrome` namespace in
+ * extension pages (popup, options, devtools, ...) exactly like it does in the
+ * background — callback-only. Chrome MV3 popup code calls `await chrome.*`,
+ * so a converted popup silently stalls on its loading screen with no visible
+ * error. Background scripts alone cannot fix this because the page is a
+ * separate document; each HTML file must reference the shim itself.
+ *
+ * Steps:
+ * 1. Skip documents without any `<script` element — nothing can call the
+ *    API there, and injecting would only bloat the package.
+ * 2. Skip documents that already reference the shim (idempotence, so
+ *    re-running a conversion cannot double-inject).
+ * 3. Insert a `<script src="...">` tag immediately after the opening
+ *    `<head>` tag, or at the very start when no `<head>` exists. The shim
+ *    must run before every other script in the page, which an in-head first
+ *    position guarantees regardless of `defer`/`async` attributes elsewhere.
+ *
+ * @param html - Raw HTML document text (not mutated).
+ * @param shimSrc - Shim URL as referenced from this document, already
+ *        relative to the document's own directory.
+ * @returns The rewritten document, or `null` when nothing had to change.
+ */
+export function injectChromeShimIntoHtml(html: string, shimSrc: string): string | null {
+  if (!/<\s*script[\s>]/i.test(html) || html.includes(shimSrc)) {
+    return null;
+  }
+  const tag = `<script src="${shimSrc}"></script>`;
+  const headMatch = /<\s*head\b[^>]*>/i.exec(html);
+  if (headMatch === null) {
+    return `${tag}${html}`;
+  }
+  const insertAt = headMatch.index + headMatch[0].length;
+  return `${html.slice(0, insertAt)}${tag}${html.slice(insertAt)}`;
+}
+
+/**
+ * Inject the chrome alias shim into every scripted extension page of the
+ * payload, in place.
+ *
+ * WHY relative URLs are computed per page: extension pages live in nested
+ * directories (`ui/popup/index.html`, `options/options.html`, ...), while the
+ * shim asset sits at the package root; a wrong relative path would 404 inside
+ * the extension package and silently disable the alias again.
+ *
+ * @param zip - In-memory ZIP archive of the extension payload (mutated).
+ * @returns The number of HTML pages that were rewritten.
+ * @throws {ConversionError} When a page entry cannot be read or updated.
+ */
+function injectChromeShimIntoExtensionPages(zip: AdmZip): number {
+  let rewritten = 0;
+  for (const entry of zip.getEntries()) {
+    if (!entry.entryName.endsWith('.html') || entry.isDirectory) {
+      continue;
+    }
+    let html: string;
+    try {
+      html = entry.getData().toString('utf8');
+    } catch (cause) {
+      throw new ConversionError(`cannot read extension page ${entry.entryName}`, { cause });
+    }
+    const shimSrc = relative(dirname(entry.entryName), CHROME_SHIM_ENTRY_NAME).split(sep).join('/');
+    const updated = injectChromeShimIntoHtml(html, shimSrc);
+    if (updated === null) {
+      continue;
+    }
+    zip.updateFile(entry, Buffer.from(updated, 'utf8'));
+    rewritten += 1;
+  }
+  return rewritten;
+}
+
+/**
  * Build the Firefox-compatible manifest with the background downgrade applied.
  *
  * WHY the background section is replaced wholesale: Firefox / GeckoView does
@@ -408,8 +482,10 @@ function extractForDebugging(zip: AdmZip): string {
  * 2. Locate `manifest.json` in the payload and validate it with
  *    `parseManifest`.
  * 3. When the parser generated a service_worker downgrade, rewrite the
- *    manifest with the Gecko background section (shim + polyfill prepended)
- *    and add both compatibility assets to the package root.
+ *    manifest with the Gecko background section (shim + polyfill prepended),
+ *    add both compatibility assets to the package root, and inject the shim
+ *    into every scripted extension page (popup/options/...) — pages are
+ *    separate documents and need their own shim reference.
  * 4. Repack the payload as an XPI at `outputPath`, creating parent
  *    directories as needed; optionally extract the result to a temporary
  *    directory for debugging.
@@ -448,9 +524,14 @@ export function convertCrxToXpi(
 
   const downgraded = applyGeckoDowngrade(zip, parseResult);
   if (downgraded) {
+    // Only MV3 conversions inject the shim at all, so page injection must be
+    // gated identically: MV2 popups keep callback-style chrome calls that
+    // Firefox already supports natively.
+    const pages = injectChromeShimIntoExtensionPages(zip);
     emit(
       'polyfill-injected',
-      `service_worker downgraded to background.scripts; ${CHROME_SHIM_ENTRY_NAME} and ${POLYFILL_ENTRY_NAME} prepended first`
+      `service_worker downgraded to background.scripts; ${CHROME_SHIM_ENTRY_NAME} and ${POLYFILL_ENTRY_NAME} prepended first` +
+        (pages > 0 ? `; shim injected into ${pages} extension page(s)` : '')
     );
   }
 

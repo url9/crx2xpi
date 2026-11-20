@@ -10,6 +10,7 @@ import {
   CrxFormatError,
   convertCrxToXpi,
   extractCrxZipPayload,
+  injectChromeShimIntoHtml,
   parseCrx3Header,
 } from '../../src/core/converter.js';
 import { ManifestValidationError } from '../../src/parsers/manifest-parser.js';
@@ -112,6 +113,38 @@ describe('extractCrxZipPayload', () => {
   it('returns a payload even when the header block is empty', () => {
     const payload = Buffer.from('12345');
     expect(extractCrxZipPayload(buildCrx3(payload)).toString()).toBe('12345');
+  });
+});
+
+describe('injectChromeShimIntoHtml', () => {
+  it('inserts the shim script immediately after the opening head tag', () => {
+    const html =
+      '<!doctype html><html><head><meta charset="utf-8"></head>' +
+      '<body><script src="app.js"></script></body></html>';
+    expect(injectChromeShimIntoHtml(html, '../chrome-promise-shim.js')).toBe(
+      '<!doctype html><html><head>' +
+        '<script src="../chrome-promise-shim.js"></script>' +
+        '<meta charset="utf-8"></head><body><script src="app.js"></script></body></html>'
+    );
+  });
+
+  it('returns null for documents without any script element', () => {
+    const html = '<html><head><title>static</title></head><body><p>hi</p></body></html>';
+    expect(injectChromeShimIntoHtml(html, 'chrome-promise-shim.js')).toBeNull();
+  });
+
+  it('returns null when the document already references the shim (idempotence)', () => {
+    const html =
+      '<html><head><script src="chrome-promise-shim.js"></script>' +
+      '<script src="app.js"></script></head></html>';
+    expect(injectChromeShimIntoHtml(html, 'chrome-promise-shim.js')).toBeNull();
+  });
+
+  it('prepends the shim tag when the document has no head element', () => {
+    const html = '<html><body><script src="app.js"></script></body></html>';
+    expect(injectChromeShimIntoHtml(html, 'chrome-promise-shim.js')).toBe(
+      '<script src="chrome-promise-shim.js"></script><html><body><script src="app.js"></script></body></html>'
+    );
   });
 });
 
@@ -220,6 +253,72 @@ describe('convertCrxToXpi', () => {
     const manifest = JSON.parse(xpi.readAsText('manifest.json')) as Record<string, unknown>;
     expect(manifest).toEqual(MV2_MANIFEST);
     expect(xpi.getEntry(POLYFILL_ENTRY_NAME)).toBeNull();
+  });
+
+  it('injects the shim into scripted extension pages with correct relative paths', () => {
+    const crxPath = join(workDir, 'pages.crx');
+    const outputPath = join(workDir, 'pages.xpi');
+    writeFileSync(
+      crxPath,
+      buildCrx3(
+        makeExtensionZip(MV3_MANIFEST, {
+          'background.js': 'init();',
+          'popup.html': '<!doctype html><html><head><script src="popup.js"></script></head></html>',
+          'ui/options/index.html':
+            '<html><head><title>Options</title><script src="options.js" defer></script></head></html>',
+        })
+      )
+    );
+
+    convertCrxToXpi(crxPath, outputPath);
+
+    const xpi = new AdmZip(outputPath);
+    // Root-level pages reference the shim directly; nested pages must climb
+    // out of their own directory or the browser would 404 inside the package.
+    expect(xpi.readAsText('popup.html')).toContain(
+      '<head><script src="chrome-promise-shim.js"></script>'
+    );
+    expect(xpi.readAsText('ui/options/index.html')).toContain(
+      '<head><script src="../../chrome-promise-shim.js"></script>'
+    );
+  });
+
+  it('leaves extension pages without scripts untouched', () => {
+    const crxPath = join(workDir, 'static.crx');
+    const outputPath = join(workDir, 'static.xpi');
+    writeFileSync(
+      crxPath,
+      buildCrx3(
+        makeExtensionZip(MV3_MANIFEST, {
+          'background.js': 'init();',
+          'banner.html': '<html><head></head><body><p>static</p></body></html>',
+        })
+      )
+    );
+
+    convertCrxToXpi(crxPath, outputPath);
+
+    const banner = new AdmZip(outputPath).readAsText('banner.html');
+    expect(banner).not.toContain('chrome-promise-shim.js');
+  });
+
+  it('never double-injects the shim when a page already references it', () => {
+    const crxPath = join(workDir, 'prefab.crx');
+    const outputPath = join(workDir, 'prefab.xpi');
+    writeFileSync(
+      crxPath,
+      buildCrx3(
+        makeExtensionZip(MV3_MANIFEST, {
+          'background.js': 'init();',
+          'popup.html': '<html><head><script src="chrome-promise-shim.js"></script></head></html>',
+        })
+      )
+    );
+
+    convertCrxToXpi(crxPath, outputPath);
+
+    const popup = new AdmZip(outputPath).readAsText('popup.html');
+    expect(popup.match(/chrome-promise-shim\.js/g)).toHaveLength(1);
   });
 
   it('rejects a payload without a manifest.json entry', () => {
