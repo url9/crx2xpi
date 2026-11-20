@@ -4,7 +4,7 @@
 
 > 将 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。
 
-`crx2xpi` 致力于成为 Chromium WebExtension 运行时与 Gecko 之间的工业级、社区维护的桥梁。它会剥离 CRX3 签名头、重写 MV3 特有的 manifest 字段（尤其是 `service_worker` 降级），并注入 `webextension-polyfill`，最后打包为可直接签名的 XPI。
+`crx2xpi` 是一座连接 Chromium WebExtension 运行时与 Gecko 的社区维护桥梁：把 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。它会剥离 CRX3 签名头、重写 MV3 特有的 manifest 字段（尤其是 `service_worker` 降级），并注入 `webextension-polyfill`，最后打包为可直接签名的 XPI。
 
 > **状态：** 转换引擎和 CLI 已端到端可用。CRX3 解包、MV3 `service_worker` 降级、polyfill 注入和 XPI 重打包均已实现，并有单元测试、集成测试（真实 CRX3 样本）和 CLI 测试覆盖。欢迎通过 [CONTRIBUTING.md](./CONTRIBUTING.zh.md) 参与改进。
 
@@ -129,10 +129,11 @@ pnpm build         # 编译到 dist/
 
 自动化集成测试仅使用一个自造的 MV3 样本 `tests/fixtures/sample-mv3 (crx2xpi).crx`，这也是本仓库中唯一入库的扩展二进制文件。若需针对更贴近真实生产形态的扩展做手动测试，请从以下官方渠道自行获取 CRX——本仓库不重新分发这些第三方二进制文件。
 
-以下候选均为开源、无需账号或服务器即可本地运行，且在撰写本文时 Mozilla Add-ons 上没有对应的官方 Firefox 版本（因此 CRX→XPI 转换确有实际价值）。它们均采用 MIT 许可。
+以下候选均为开源、无需账号或服务器即可本地运行，且采用 MIT 许可。除 Dark Reader（它有官方 Firefox 移植版，上方 GIF 转换其官方 Chrome MV3 构建，纯粹是为了在大型知名代码库上验证转换管线）之外，其余扩展在撰写本文时 Mozilla Add-ons 上均无官方 Firefox 版本——这正是 CRX→XPI 转换最能发挥价值的地方。
 
 | 扩展 | 开发者 | Chrome 商店 | 源码 | 商店 ID |
 | --- | --- | --- | --- | --- |
+| Dark Reader | Alexander Shutau | [商店](https://chromewebstore.google.com/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh) | [GitHub](https://github.com/darkreader/darkreader) | `eimadpbcbfnmbkopoojfekhnkhdbieeh` |
 | CookieMop | thoopring | [商店](https://chromewebstore.google.com/detail/cookiemop/nbehnialaodjcffgjkckbnocggbdmdel) | [GitHub](https://github.com/thoopring/cookiemop) | `nbehnialaodjcffgjkckbnocggbdmdel` |
 | Cursorfly | anugotta | [商店](https://chromewebstore.google.com/detail/cursorfly-screen-recorder/dediffcenkdgplheoefilljjpcmjgidp) | [GitHub](https://github.com/anugotta/cursorfly-screen-recorder) | `dediffcenkdgplheoefilljjpcmjgidp` |
 | Alt Text Auto-Fill | SoftwareforProgress | [商店](https://chromewebstore.google.com/detail/alt-text-auto-fill/ldgghfoheoipmffiidhcgjgnhmjnmkpc) | [GitHub](https://github.com/SoftwareforProgress/Alt-Text-Auto-Fill) | `ldgghfoheoipmffiidhcgjgnhmjnmkpc` |
@@ -149,14 +150,14 @@ npx crx2xpi downloaded.crx downloaded.xpi
 
 ### 实际效果
 
-一个真实的第三方扩展——[CookieMop](https://github.com/thoopring/cookiemop)，一款在关闭标签页时清理 Cookie 的开源 MV3 扩展——在两个浏览器中运行其真实的 popup 界面。左侧为原始 Chrome MV3 CRX，使用基于回调的 `chrome.*` API 与 service worker；右侧为同一个扩展经 `crx2xpi` 转换后在 Firefox 中运行的版本，以非持久化的 `background.scripts`（保留 `type: module`）通过 Mozilla 的 `browser.*` Promise polyfill 运行。彩色横幅标注实时运行环境；popup 及其逻辑均为 CookieMop 未经修改的源码。
+一个广为人知的第三方扩展——[Dark Reader](https://github.com/darkreader/darkreader)，拥有数百万用户的开源暗色模式扩展——在两个浏览器中运行其真实的 popup 界面。左侧为原始 Chrome MV3 CRX，使用基于回调的 `chrome.*` API 与 service worker；右侧为同一份官方 Chrome MV3 构建经 `crx2xpi` 转换后在 Firefox 中运行的版本，以非持久化的 `background.scripts`，通过注入的 chrome 别名 shim 与 Mozilla 的 `browser.*` Promise polyfill 运行。两个窗口同时展示同一演示页与扩展 popup；在 popup 中切换暗色模式会实时改变两个浏览器中页面的配色。popup 及其逻辑均为 Dark Reader 未经修改的源码。
 
 <p align="center">
-  <img src="./docs/demo-chrome.gif" alt="CookieMop 原始 CRX 在 Chrome 中使用 chrome.* API 运行" width="48%" />
-  <img src="./docs/demo-firefox.gif" alt="CookieMop 转换后 XPI 在 Firefox 中使用 browser.* polyfill 运行" width="48%" />
+  <img src="./docs/demo-chrome.gif" alt="Dark Reader 原始 MV3 CRX 在 Chrome 中运行" width="48%" />
+  <img src="./docs/demo-firefox.gif" alt="Dark Reader 转换后 XPI 在 Firefox 中运行" width="48%" />
 </p>
 
-<p align="center"><sub>转换前：Chrome 中的原始 CookieMop CRX　·　转换后：Firefox 中的 crx2xpi 转换版 XPI</sub></p>
+<p align="center"><sub>转换前：Chrome 中的原始 Dark Reader MV3 CRX　·　转换后：Firefox 中的 crx2xpi 转换版 XPI</sub></p>
 
 ## 提交规范（Conventional Commits）
 

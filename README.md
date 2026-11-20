@@ -4,8 +4,9 @@ English | [中文](README.zh.md)
 
 > Convert Chrome MV3 extensions (CRX3) into Firefox / GeckoView-compatible XPI add-ons.
 
-`crx2xpi` aims to become an industrial-grade, community-maintained bridge
-between the Chromium WebExtension runtime and Gecko. It strips the CRX3 signing
+`crx2xpi` is a community-maintained bridge between the Chromium WebExtension
+runtime and Gecko: it turns Chrome MV3 extensions (CRX3) into
+Firefox / GeckoView-compatible XPI add-ons. It strips the CRX3 signing
 header, rewrites MV3-specific manifest fields (notably the `service_worker`
 downgrade), and injects the `webextension-polyfill` before packaging a signed-ready
 XPI.
@@ -188,11 +189,15 @@ CRX yourself from the official sources below; their binaries are **not**
 redistributed here.
 
 These candidates are open source, work locally without an account or server,
-and — at the time of writing — have no official Firefox listing on Mozilla
-Add-ons (so a CRX-to-XPI conversion is actually useful). All are MIT licensed.
+and are MIT licensed. Except for Dark Reader — which ships its own Firefox
+port, so the GIF above converts its official Chrome MV3 build purely to prove
+the pipeline against a large, well-known codebase — they have no official
+Firefox listing on Mozilla Add-ons at the time of writing, which is exactly
+where a CRX-to-XPI conversion is useful.
 
 | Extension | Developer | Chrome Web Store | Source | Store ID |
 | --- | --- | --- | --- | --- |
+| Dark Reader | Alexander Shutau | [Store](https://chromewebstore.google.com/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh) | [GitHub](https://github.com/darkreader/darkreader) | `eimadpbcbfnmbkopoojfekhnkhdbieeh` |
 | CookieMop | thoopring | [Store](https://chromewebstore.google.com/detail/cookiemop/nbehnialaodjcffgjkckbnocggbdmdel) | [GitHub](https://github.com/thoopring/cookiemop) | `nbehnialaodjcffgjkckbnocggbdmdel` |
 | Cursorfly | anugotta | [Store](https://chromewebstore.google.com/detail/cursorfly-screen-recorder/dediffcenkdgplheoefilljjpcmjgidp) | [GitHub](https://github.com/anugotta/cursorfly-screen-recorder) | `dediffcenkdgplheoefilljjpcmjgidp` |
 | Alt Text Auto-Fill | SoftwareforProgress | [Store](https://chromewebstore.google.com/detail/alt-text-auto-fill/ldgghfoheoipmffiidhcgjgnhmjnmkpc) | [GitHub](https://github.com/SoftwareforProgress/Alt-Text-Auto-Fill) | `ldgghfoheoipmffiidhcgjgnhmjnmkpc` |
@@ -216,21 +221,23 @@ with them, and these links are provided for testing only.
 
 ### See it in action
 
-A real third-party extension — [CookieMop](https://github.com/thoopring/cookiemop),
-an open-source MV3 add-on that clears cookies on tab close — running its actual
-popup UI in both browsers. Left: the original Chrome MV3 CRX, using the
-callback-based `chrome.*` API and a service worker. Right: the very same
-extension after `crx2xpi` conversion, running in Firefox as non-persistent
-`background.scripts` (with its `type: module` preserved) via Mozilla's
-`browser.*` promise polyfill. The colored bar labels the live runtime; the
-popup and its logic are CookieMop's unmodified source.
+A widely used third-party extension — [Dark Reader](https://github.com/darkreader/darkreader),
+the open-source dark-mode add-on used by millions — running its actual popup
+UI in both browsers. Left: the original Chrome MV3 CRX, using the
+callback-based `chrome.*` API and a service worker. Right: the same official
+Chrome MV3 build after `crx2xpi` conversion, running in Firefox as
+non-persistent `background.scripts` via the injected chrome alias shim and
+Mozilla's `browser.*` promise polyfill. Both windows show the same demo page
+next to the extension popup; toggling Dark mode in the popup re-themes the
+page live in both browsers — the popup and its logic are Dark Reader's
+unmodified source.
 
 <p align="center">
-  <img src="./docs/demo-chrome.gif" alt="CookieMop original CRX running in Chrome with chrome.* API" width="48%" />
-  <img src="./docs/demo-firefox.gif" alt="CookieMop converted XPI running in Firefox with browser.* polyfill" width="48%" />
+  <img src="./docs/demo-chrome.gif" alt="Dark Reader original MV3 CRX running in Chrome" width="48%" />
+  <img src="./docs/demo-firefox.gif" alt="Dark Reader converted XPI running in Firefox" width="48%" />
 </p>
 
-<p align="center"><sub>Before: original CookieMop CRX in Chrome · After: crx2xpi-converted XPI in Firefox</sub></p>
+<p align="center"><sub>Before: original Dark Reader MV3 CRX in Chrome · After: crx2xpi-converted XPI in Firefox</sub></p>
 
 ## Commit convention (Conventional Commits)
 
