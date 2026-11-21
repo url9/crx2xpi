@@ -21,7 +21,10 @@ signed-ready XPI.
 > repacking are implemented and covered by unit, integration (real CRX3
 > sample), and CLI tests. Six converted extensions have also been verified
 > functionally in a real Firefox browser, and the diagnostic catalogue was
-> checked against seven real-world samples (zero false-positive warnings);
+> checked against nine real-world samples (zero false-positive warnings).
+> The catalogue is reconciled against real runtime outcomes — detection coverage
+> was expanded from genuine false-negative cases, including a real add-on that
+> installed and reported clean but could not be used;
 > see [verified compatibility findings](./docs/verified-compat-findings.md).
 > See [CONTRIBUTING.md](./CONTRIBUTING.md) to help improve it.
 

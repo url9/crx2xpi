@@ -39,11 +39,92 @@ describe('analyzeSources', () => {
     expect(findings[0].file).toBe('a.js');
   });
 
-  it('de-duplicates the same API within a single line', () => {
+  it('detects a Chrome-only API under the browser namespace', () => {
     const sources: DiagnosticSource[] = [
-      { path: 'a.js', content: 'chrome.tabGroups.query(); chrome.tabGroups.get();' },
+      { path: 'js/bg.js', content: 'const x = 1;\nbrowser.offscreen.createDocument({});\n' },
     ];
-    expect(analyzeSources(sources)).toHaveLength(1);
+    const findings = analyzeSources(sources);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      file: 'js/bg.js',
+      line: 2,
+      code: 'browser.offscreen',
+      severity: 'warning',
+    });
+  });
+
+  it('detects the browser.storage.session crash seen in StayFocusd', () => {
+    // wxt-built payloads emit browser.*; Firefox has no storage.session namespace.
+    const sources: DiagnosticSource[] = [
+      { path: 'background.js', content: 'browser.storage.session.setAccessLevel();' },
+    ];
+    const findings = analyzeSources(sources);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      file: 'background.js',
+      line: 1,
+      code: 'browser.storage.session',
+      severity: 'warning',
+    });
+  });
+
+  it('flags setAccessLevel where the namespace exists but the method does not', () => {
+    // Open Stay Focused crashed on chrome.storage.local.setAccessLevel; the
+    // storage.local namespace is supported, so only the full method path matches.
+    const sources: DiagnosticSource[] = [
+      {
+        path: 'background.js',
+        content: 'chrome.storage.local.setAccessLevel({accessLevel:"TRUSTED"});',
+      },
+    ];
+    const findings = analyzeSources(sources);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      code: 'chrome.storage.local.setAccessLevel',
+      severity: 'warning',
+    });
+  });
+
+  it('does not flag Firefox-supported APIs used by extensions such as Dark Reader', () => {
+    // browser.* must not be matched wholesale: only catalogue entries are flagged.
+    const sources: DiagnosticSource[] = [
+      {
+        path: 'content.js',
+        content: [
+          'browser.tabs.query({});',
+          'browser.storage.local.get("settings");',
+          'browser.runtime.getManifest();',
+          'browser.action.setBadgeText({text:"on"});',
+          'browser.scripting.executeScript({target:{tabId:1},func:()=>1});',
+        ].join('\n'),
+      },
+    ];
+    expect(analyzeSources(sources)).toEqual([]);
+  });
+
+  it('keeps chrome and browser roots as distinct findings on one line', () => {
+    const sources: DiagnosticSource[] = [
+      { path: 'a.js', content: 'chrome.offscreen.close(); browser.offscreen.createDocument();' },
+    ];
+    const findings = analyzeSources(sources);
+    expect(findings.map((finding) => finding.code)).toEqual([
+      'chrome.offscreen',
+      'browser.offscreen',
+    ]);
+  });
+
+  it('de-duplicates the same API under the same namespace within a single line', () => {
+    const sources: DiagnosticSource[] = [
+      {
+        path: 'a.js',
+        content: 'chrome.tabGroups.query(); chrome.tabGroups.get(); browser.tabGroups.get();',
+      },
+    ];
+    const findings = analyzeSources(sources);
+    expect(findings.map((finding) => finding.code)).toEqual([
+      'chrome.tabGroups',
+      'browser.tabGroups',
+    ]);
   });
 
   it('does not flag APIs Firefox already supports', () => {
@@ -112,6 +193,6 @@ describe('renderReportMarkdown', () => {
       { path: 'a.js', content: 'chrome.storage.session.set({});\nimportScripts("x");' },
     ]);
     const md = renderReportMarkdown(report);
-    expect(md).toContain('0 warning(s), 2 info');
+    expect(md).toContain('1 warning(s), 1 info');
   });
 });

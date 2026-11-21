@@ -27,19 +27,46 @@ Two methodology notes from that round, so future tests do not repeat them:
 - CookieMop deletes a site's cookies only when the last tab of that site
   closes; closing any other tab is a no-op by design.
 
-## Runtime-confirmed gaps NOT yet in the static catalogue (false negatives)
+## Runtime-confirmed gaps (false negatives)
 
-Do not silently add these as rules; each needs a regression test plus a
-decision about severity (`warning` vs `info`).
+Each entry below was a real miss, reproduced at runtime, then fixed with a
+regression test and a severity decision. They are the birth certificates of
+the current catalogue rules.
 
 1. `chrome.storage.local.setAccessLevel` / `chrome.storage.session.setAccessLevel`
    — not implemented in Firefox. Verified: Open Stay Focused's background
    module throws `TypeError` at `background.js:159`
-   (`Promise.all([chrome.storage.local.setAccessLevel(...), ...])`). The
-   extension survived only because the call sits on the module's last line;
-   the same pattern earlier in a module would kill every listener registered
-   after it. The static report currently flags that line only for the benign
-   `chrome.storage.session` info and misses the fatal call.
+   (`Promise.all([chrome.storage.local.setAccessLevel(...), ...])`). **The crash
+   position decides the outcome:** that call sat on the module's last line, so
+   every listener was already registered and the add-on survived. In StayFocusd
+   4.6.25 the same method throws on **line 2** of the background script, before
+   any listener is registered; the message chain is dead and the add-on is
+   unusable. Same API, opposite outcome, decided purely by where the throw
+   lands. This is the hardest argument for `warning` (not `info`): a fatal call
+   cannot be judged benign by the API name alone.
+   **Fixed:** `storage.local.setAccessLevel` and `storage.session` are now
+   catalogue rules at `warning`, and the report flags the previously missed
+   call.
+
+2. Minified namespace aliases hide Chrome-only APIs from static scanning.
+   Verified with StayFocusd 4.6.25 (wxt/Webpack build): the shipped
+   `background.js` calls `W.storage.session.setAccessLevel(...)`, where `W` is
+   a one-letter minified alias of the `chrome` namespace. At runtime Firefox
+   throws `TypeError: storage.session.setAccessLevel is not a function` on
+   line 2, so no message listener is registered and the popup/content scripts
+   emit 260+ `Could not establish connection. Receiving end does not exist.`
+   errors — the add-on installs, activates, reports clean, but cannot be used.
+   **This case drove the `browser.*` detection expansion:** the scanner matched
+   only a literal `chrome.*` root, so every Chrome-only call emitted by a wxt /
+   webextension-polyfill / Plasmo build (which use `browser.*`) escaped
+   detection. Modern MV3 frameworks make `browser.*` the mainstream form, so
+   fixing the detected-root coverage outranked adding any single catalogue
+   rule. The scanner now matches catalogue entries under **both** `chrome.*`
+   and `browser.*`, sharing one conservative catalogue — supported APIs such
+   as `browser.action` / `browser.scripting` are still not flagged.
+   A minified alias (`W`) still cannot be tied back to `chrome` without false
+   positives on unrelated objects; that remains an inherent static-analysis
+   limit on bundled payloads, not a catalogue gap.
 
 ## Catalogue accuracy observed on this corpus
 
@@ -50,5 +77,19 @@ decision about severity (`warning` vs `info`).
   Auto-Fill, CookieMop, Cursorfly, Local iTab, Open Stay Focused, Dark Reader,
   Digital Memory). Firefox-supported APIs (`chrome.action`, `chrome.scripting`,
   `chrome.runtime.getManifest`) were never flagged.
-- `chrome.storage.session` produces info-level findings only; it is supported
-  in current Firefox, so the conservative severity is appropriate.
+- `storage.session` was promoted from `info` to **`warning`** after runtime
+  reconciliation: Firefox ESR 153 does **not** expose `browser.storage.session`
+  (runtime error `"browser.storage.session" is undefined` in StayFocusd
+  content scripts), and the fatal call can abort the whole background module.
+  The corpus now proves severity by observed outcome, not by API-name guess.
+
+## Additional extensions verified for install + report accuracy
+
+| Extension | Conversion | Firefox side-load | `--report` |
+| --- | --- | --- | --- |
+| StayFocusd 4.6.25 | MV3 `service_worker` downgrade; shim + polyfill prepended; shim injected into 2 extension pages | auto id `__msg_extname__@crx2xpi.local`, active, not disabled | 0 findings before the fix — false negative that drove the `browser.*` detection expansion (gaps 1 & 2) |
+| Tabliss 2.6.0 | MV3 new-tab-only, no downgrade needed; Gecko id rewrite only | auto id `tabliss-a-beautiful-new-tab@crx2xpi.local`, active, not disabled | 0 findings — accurate; no Chrome-only API used |
+
+Both add-ons were installed with `AddonManager.addInstall` via Marionette in an
+isolated profile with `xpinstall.signatures.required=false`. The auto-generated
+`@crx2xpi.local` id was accepted by Firefox for both, confirming installability.

@@ -8,7 +8,7 @@
 
 `crx2xpi` 是一座连接 Chromium WebExtension 运行时与 Gecko 的社区维护桥梁：把 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。它会剥离 CRX3 签名头、重写适配 Gecko 的 manifest 字段（MV3 `service_worker` 降级、稳定的 Gecko 附加组件 ID、权限/WAR/CSP 规范化，以及移除 Chrome 专有键）、注入 `webextension-polyfill` 和 `chrome` 别名 shim，并可生成静态兼容性报告，最后打包为可直接签名的 XPI。
 
-> **状态：** 转换引擎和 CLI 已端到端可用。CRX3 解包、MV3 `service_worker` 降级、Gecko manifest 重写、chrome 别名 shim、polyfill 注入、兼容性诊断和 XPI 重打包均已实现，并有单元测试、集成测试（真实 CRX3 样本）和 CLI 测试覆盖。6 个转换后的扩展还经过真实 Firefox 功能验证，诊断目录在 7 个真实样本上零误报；详见[真实浏览器验证语料](./docs/verified-compat-findings.md)。欢迎通过 [CONTRIBUTING.md](./CONTRIBUTING.zh.md) 参与改进。
+> **状态：** 转换引擎和 CLI 已端到端可用。CRX3 解包、MV3 `service_worker` 降级、Gecko manifest 重写、chrome 别名 shim、polyfill 注入、兼容性诊断和 XPI 重打包均已实现，并有单元测试、集成测试（真实 CRX3 样本）和 CLI 测试覆盖。6 个转换后的扩展还经过真实 Firefox 功能验证，诊断目录在 9 个真实样本上零误报。诊断目录与真实运行结果逐条对账——检测面由真实漏报案例驱动扩展，其中包括一个能安装、报告全绿却实际不可用的扩展；详见[真实浏览器验证语料](./docs/verified-compat-findings.md)。欢迎通过 [CONTRIBUTING.md](./CONTRIBUTING.zh.md) 参与改进。
 
 ## CLI 使用说明
 

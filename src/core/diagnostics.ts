@@ -51,14 +51,17 @@ export interface DiagnosticReport {
 }
 
 /**
- * A Chrome-only API rule: a dotted prefix matched against `chrome.*` usage.
+ * A Chrome-only API rule: a dotted prefix matched under either WebExtension
+ * namespace (`chrome.*` or `browser.*`).
  *
  * Only APIs that are genuinely absent or materially different in Firefox are
- * listed; common APIs Firefox implements (`tabs`, `storage.local`, `runtime`,
- * ...) are intentionally excluded to avoid false alarms.
+ * listed; common APIs Firefox implements (`tabs`, most of `storage.local`,
+ * `runtime`, ...) are intentionally excluded to avoid false alarms. A specific
+ * Chrome-only method inside an otherwise-supported namespace (for example
+ * `storage.local.setAccessLevel`) is still listed by its full path.
  */
 interface ApiRule {
-  /** Dotted API prefix without the `chrome.` root, e.g. `offscreen`. */
+  /** Dotted API prefix without the `chrome.`/`browser.` root, e.g. `offscreen`. */
   api: string;
   /** Severity attached to a match. */
   severity: DiagnosticSeverity;
@@ -72,8 +75,9 @@ interface ApiRule {
  * Conservative catalogue of Chrome-only / divergent APIs worth flagging.
  *
  * Kept as data (not code) so the catalogue can grow without touching scanner
- * logic. Prefixes are matched at a dot boundary, so `offscreen` matches
- * `chrome.offscreen.createDocument` but not `chrome.offscreenish`.
+ * logic. Prefixes are matched at a dot boundary under both namespaces, so
+ * `offscreen` matches `chrome.offscreen.createDocument` and
+ * `browser.offscreen.createDocument`, but not `chrome.offscreenish`.
  */
 const API_RULES: readonly ApiRule[] = [
   {
@@ -114,9 +118,17 @@ const API_RULES: readonly ApiRule[] = [
   },
   {
     api: 'storage.session',
-    severity: 'info',
-    message: 'chrome.storage.session landed later in Firefox than local storage.',
-    suggestion: 'Confirm the target Firefox version supports session storage.',
+    severity: 'warning',
+    message: 'storage.session is not available in Firefox; the entire namespace is missing.',
+    suggestion: 'Use storage.local or a guarded fallback, and test the affected feature.',
+  },
+  {
+    // Firefox implements storage.local but not this Chrome-only method; a call
+    // early in a module throws and can abort listener registration (StayFocusd).
+    api: 'storage.local.setAccessLevel',
+    severity: 'warning',
+    message: 'storage.local.setAccessLevel is not implemented in Firefox.',
+    suggestion: 'Remove the call; Firefox needs no storage access-level declaration.',
   },
   {
     api: 'runtime.getPackageDirectoryEntry',
@@ -127,9 +139,9 @@ const API_RULES: readonly ApiRule[] = [
 ];
 
 /**
- * Match a `chrome.*` member against the rule catalogue at a dot boundary.
+ * Match an API member against the rule catalogue at a dot boundary.
  *
- * @param member - Dotted API path after the `chrome.` root.
+ * @param member - Dotted API path after the `chrome.` or `browser.` root.
  * @returns The first matching rule, or undefined when none applies.
  */
 function matchApiRule(member: string): ApiRule | undefined {
@@ -137,28 +149,38 @@ function matchApiRule(member: string): ApiRule | undefined {
 }
 
 /**
- * Scan one source line for Chrome-only API usage.
+ * Scan one source line for Chrome-only API usage under either namespace.
+ *
+ * WHY both roots: Chrome MV3 code calls `chrome.*`, but framework-generated or
+ * polyfilled payloads (for example wxt builds) emit `browser.*` instead. Firefox
+ * exposes both namespaces, so a Chrome-only API under `browser.*` is just as
+ * broken at runtime. Checking only `chrome.*` silently missed the real crash
+ * seen in StayFocusd (`browser.storage.session.setAccessLevel`).
  *
  * @param line - A single line of JavaScript source.
  * @param file - Payload-relative path, used in emitted findings.
  * @param lineNumber - 1-based line number.
- * @returns Findings for that line, de-duplicated by API.
+ * @returns Findings for that line, de-duplicated by namespace and API.
  */
 function scanLineForApis(line: string, file: string, lineNumber: number): DiagnosticFinding[] {
   const findings: DiagnosticFinding[] = [];
   const seen = new Set<string>();
-  const pattern = /\bchrome\.([a-zA-Z_][\w.]*)/g;
+  const pattern = /\b(chrome|browser)\.([a-zA-Z_][\w.]*)/g;
   for (const match of line.matchAll(pattern)) {
-    const member = match[1];
-    const rule = matchApiRule(member);
-    if (rule === undefined || seen.has(rule.api)) {
+    const namespace = match[1];
+    const rule = matchApiRule(match[2]);
+    if (rule === undefined) {
       continue;
     }
-    seen.add(rule.api);
+    const code = `${namespace}.${rule.api}`;
+    if (seen.has(code)) {
+      continue;
+    }
+    seen.add(code);
     findings.push({
       file,
       line: lineNumber,
-      code: `chrome.${rule.api}`,
+      code,
       severity: rule.severity,
       message: rule.message,
       suggestion: rule.suggestion,
