@@ -39,6 +39,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "audit": "node scripts/publish-audit.mjs",
+    "prepublishOnly": "pnpm run audit",
     "commit": "cz",
     "prepare": "husky"
   },

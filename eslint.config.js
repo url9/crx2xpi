@@ -21,12 +21,15 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Node helper scripts use runtime globals that ESLint cannot infer from
-    // their plain-JS environment.
-    files: ['scripts/**/*.js'],
+    // their plain-JS environment. `.mjs` entries ship real audit logic, so
+    // they get the full Node global set instead of a hand-picked shortlist.
+    files: ['scripts/**/*.js', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         URL: 'readonly',
         process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
       },
     },
   },

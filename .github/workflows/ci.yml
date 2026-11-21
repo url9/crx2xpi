@@ -49,3 +49,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # The publish audit packs the built payload and scans it for emails,
+      # tokens and local paths; it gates npm publish locally via
+      # `prepublishOnly` and runs here so regressions surface on every push.
+      - name: Publish audit
+        run: pnpm run audit

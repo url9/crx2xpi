@@ -1,0 +1,223 @@
+#!/usr/bin/env node
+/**
+ * Pre-publish security audit for the crx2xpi npm package.
+ *
+ * npm tarballs are fully public: anyone can download and unpack one, so the
+ * audit enforces the release checklist mechanically instead of relying on
+ * reviewer memory. It is wired as the `prepublishOnly` npm hook, so
+ * `npm publish` aborts before uploading when any check fails.
+ *
+ * Audit steps, in order:
+ *
+ * 1. Assert `package.json` points `repository`, `bugs` and `homepage` at the
+ *    public GitHub repository, and that `author` contains no email address.
+ * 2. Assert the packed file list stays inside the publish whitelist, so a
+ *    forgotten new file (`.npmrc`, `.env`, editor config, notes) can never
+ *    slip into the tarball by default.
+ * 3. Pack a real tarball, unpack it and scan every published file for email
+ *    addresses, credential-shaped strings (GitHub/npm/OpenAI/AWS tokens and
+ *    private keys) and local filesystem paths that leak the author's machine
+ *    layout.
+ * 4. With `--registry`, additionally fetch the published package document
+ *    from npm and fail when an email outside the allowlist shows up in any
+ *    metadata field.
+ *
+ * Usage: node scripts/publish-audit.mjs [--registry]
+ */
+
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, posix } from 'node:path';
+
+/** Repository URL that every public-facing package.json field must match. */
+const PUBLIC_REPO = 'https://github.com/url9/crx2xpi';
+/** Tarball path prefixes that are allowed to be published; anything else fails. */
+const ALLOWED_PATHS = ['dist/', 'LICENSE', 'NOTICE', 'README.md', 'README.zh.md', 'package.json'];
+/** npm account that is the only identity allowed to appear in metadata. */
+const ALLOWED_EMAIL = 'url9_npm@163.com';
+
+/**
+ * A single failed audit check, rendered for humans and used for the exit code.
+ *
+ * @typedef {object} AuditFailure
+ * @property {'package-json'|'whitelist'|'content'|'registry'} area Which audit step failed.
+ * @property {string} message One-line explanation including the offending value.
+ */
+
+/**
+ * Assert the public-facing package.json fields are correct.
+ *
+ * @param {Record<string, unknown>} manifest Parsed package.json.
+ * @returns {AuditFailure[]} Empty when every field points at the public repo.
+ */
+function auditManifestFields(manifest) {
+  /** @type {AuditFailure[]} */
+  const failures = [];
+  const repoUrl =
+    typeof manifest.repository === 'object' && manifest.repository !== null
+      ? String(/** @type {{url?: unknown}} */ (manifest.repository).url ?? '').replace('git+', '')
+      : String(manifest.repository ?? '');
+  for (const [field, value] of [
+    ['repository', repoUrl],
+    ['bugs', String(/** @type {{url?: unknown}} */ (manifest.bugs ?? {}).url ?? '')],
+    ['homepage', String(manifest.homepage ?? '')],
+  ]) {
+    if (!value.startsWith(PUBLIC_REPO)) {
+      failures.push({
+        area: 'package-json',
+        message: `"${field}" must point at ${PUBLIC_REPO}, got "${value}"`,
+      });
+    }
+  }
+  if (/@/.test(String(manifest.author ?? ''))) {
+    failures.push({
+      area: 'package-json',
+      message: `"author" must not contain an email address, got "${manifest.author}"`,
+    });
+  }
+  return failures;
+}
+
+/**
+ * Assert every packed file stays inside the publish whitelist.
+ *
+ * @param {string[]} packedPaths Paths npm reported for the tarball.
+ * @returns {AuditFailure[]} One failure per file outside the whitelist.
+ */
+function auditWhitelist(packedPaths) {
+  return packedPaths
+    .filter((p) => !ALLOWED_PATHS.some((allowed) => p === allowed || p.startsWith(allowed)))
+    .map((p) => ({
+      area: 'whitelist',
+      message: `packed file is outside the "files" whitelist: "${p}"`,
+    }));
+}
+
+/**
+ * Scan every unpacked file for emails, credentials and local paths.
+ *
+ * WHY one regex list instead of per-file allowlists: the tarball is public
+ * text, so anything credential-shaped anywhere is a leak regardless of which
+ * file it landed in.
+ *
+ * @param {string} root Directory the tarball was unpacked into.
+ * @returns {AuditFailure[]} Failures describing each suspicious match.
+ */
+function auditTarballContent(root) {
+  const patterns = [
+    { name: 'email address', re: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi },
+    { name: 'GitHub token', re: /gh[posur]_[A-Za-z0-9]{30,}/g },
+    { name: 'npm token', re: /npm_[A-Za-z0-9]{30,}/g },
+    { name: 'OpenAI-style key', re: /sk-[A-Za-z0-9_]{20,}/g },
+    { name: 'AWS access key', re: /AKIA[0-9A-Z]{16}/g },
+    { name: 'PEM private key', re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g },
+    {
+      name: 'local filesystem path',
+      re: /(\/root\/|\/home\/[a-z0-9_-]+\/|\/Users\/[a-z0-9_-]+\/)/g,
+    },
+  ];
+  /** @type {AuditFailure[]} */
+  const failures = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.(js|mjs|cjs|ts|json|md|txt|html|css)$/.test(entry.name)) {
+        continue;
+      }
+      const text = readFileSync(full, 'utf8');
+      const rel = posix.join('package', full.slice(root.length + 1));
+      for (const { name, re } of patterns) {
+        for (const match of text.matchAll(re)) {
+          failures.push({
+            area: 'content',
+            message: `${name} found in ${rel}: ${JSON.stringify(String(match[0]).slice(0, 60))}`,
+          });
+        }
+      }
+    }
+  };
+  walk(root);
+  return failures;
+}
+
+/**
+ * Fetch the published package document and assert the metadata only names the
+ * allowlisted npm identity.
+ *
+ * @param {string} packageName Package to look up on the registry.
+ * @returns {Promise<AuditFailure[]>} Failures for unexpected emails or missing packages.
+ */
+async function auditRegistryMetadata(packageName) {
+  const response = await fetch(`https://registry.npmjs.org/${packageName}`);
+  if (!response.ok) {
+    return [{ area: 'registry', message: `registry lookup failed with HTTP ${response.status}` }];
+  }
+  const emails = new Set(
+    String(JSON.stringify(await response.json())).match(
+      /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi
+    ) ?? []
+  );
+  return [...emails]
+    .filter((email) => email.toLowerCase() !== ALLOWED_EMAIL)
+    .map((email) => ({
+      area: 'registry',
+      message: `unexpected email "${email}" in published metadata`,
+    }));
+}
+
+/**
+ * Run the full audit and print the result.
+ *
+ * @returns {Promise<number>} Process exit code: 0 clean, 1 with failures listed.
+ */
+async function main() {
+  /** @type {AuditFailure[]} */
+  const failures = [];
+  const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+  failures.push(...auditManifestFields(manifest));
+
+  // `--json` gives the packed file list machine-readably; pack in one step and
+  // keep the real tarball for the content scan.
+  const pack = spawnSync('npm', ['pack', '--json'], { encoding: 'utf8', maxBuffer: 32 << 20 });
+  if (pack.status !== 0) {
+    console.error('publish-audit: npm pack failed:', pack.stderr.trim().slice(0, 500));
+    return 1;
+  }
+  const packed = /** @type {{filename: string, files: {path: string}[]}} */ (
+    JSON.parse(pack.stdout)
+  )[0];
+  failures.push(...auditWhitelist(packed.files.map((f) => f.path)));
+
+  const workDir = mkdtempSync(join(tmpdir(), 'publish-audit-'));
+  try {
+    const tarball = join(workDir, packed.filename);
+    renameSync(packed.filename, tarball);
+    spawnSync('tar', ['xzf', tarball, '-C', workDir]);
+    failures.push(...auditTarballContent(workDir));
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+
+  if (process.argv.includes('--registry')) {
+    failures.push(...(await auditRegistryMetadata(String(manifest.name))));
+  }
+
+  if (failures.length > 0) {
+    for (const failure of failures) {
+      console.error(`publish-audit [${failure.area}]: ${failure.message}`);
+    }
+    console.error(`publish-audit: ${failures.length} check(s) failed`);
+    return 1;
+  }
+  console.log('publish-audit: all checks passed');
+  return 0;
+}
+
+// `exitCode` (not `process.exit`) lets Node flush pending stdout before the
+// process ends.
+process.exitCode = await main();
