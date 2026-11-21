@@ -8,6 +8,7 @@ import {
   CHROME_SHIM_ENTRY_NAME,
   ConversionError,
   CrxFormatError,
+  analyzeCrx,
   convertCrxToXpi,
   extractCrxZipPayload,
   injectChromeShimIntoHtml,
@@ -241,7 +242,7 @@ describe('convertCrxToXpi', () => {
     expect(polyfill).toContain('browser.runtime.id');
   });
 
-  it('leaves an MV2 manifest untouched and injects nothing', () => {
+  it('rewrites an MV2 manifest for Gecko but injects no shim or polyfill', () => {
     const crxPath = join(workDir, 'legacy.crx');
     const outputPath = join(workDir, 'legacy.xpi');
     writeFileSync(crxPath, buildCrx3(makeExtensionZip(MV2_MANIFEST, { 'legacy.js': 'a();' })));
@@ -251,8 +252,14 @@ describe('convertCrxToXpi', () => {
     expect(result.downgraded).toBe(false);
     const xpi = new AdmZip(outputPath);
     const manifest = JSON.parse(xpi.readAsText('manifest.json')) as Record<string, unknown>;
-    expect(manifest).toEqual(MV2_MANIFEST);
+    // MV2 keeps its fields verbatim (including persistent:true) and gains a
+    // stable Gecko id, but receives no service-worker shim or polyfill.
+    expect(manifest).toEqual({
+      ...MV2_MANIFEST,
+      browser_specific_settings: { gecko: { id: 'legacy@crx2xpi.local' } },
+    });
     expect(xpi.getEntry(POLYFILL_ENTRY_NAME)).toBeNull();
+    expect(xpi.getEntry(CHROME_SHIM_ENTRY_NAME)).toBeNull();
   });
 
   it('injects the shim into scripted extension pages with correct relative paths', () => {
@@ -344,6 +351,39 @@ describe('convertCrxToXpi', () => {
     expect(() => convertCrxToXpi(missing, join(workDir, 'out.xpi'))).toThrow(ConversionError);
   });
 
+  it('applies the safe manifest rewrites during an MV3 conversion', () => {
+    const crxPath = join(workDir, 'rewrite.crx');
+    const outputPath = join(workDir, 'rewrite.xpi');
+    const manifest: Record<string, unknown> = {
+      ...MV3_MANIFEST,
+      update_url: 'https://clients2.google.com',
+      key: 'chrome-key',
+      permissions: ['storage', 'https://example.com/*'],
+      content_security_policy: "script-src 'self'",
+    };
+    writeFileSync(crxPath, buildCrx3(makeExtensionZip(manifest, { 'background.js': 'init();' })));
+
+    convertCrxToXpi(crxPath, outputPath);
+
+    const rewritten = JSON.parse(new AdmZip(outputPath).readAsText('manifest.json')) as Record<
+      string,
+      unknown
+    >;
+    expect(rewritten.update_url).toBeUndefined();
+    expect(rewritten.key).toBeUndefined();
+    expect(rewritten.permissions).toEqual(['storage']);
+    expect(rewritten.host_permissions).toEqual(['https://example.com/*']);
+    expect(rewritten.content_security_policy).toEqual({ extension_pages: "script-src 'self'" });
+    expect(rewritten.browser_specific_settings).toEqual({
+      gecko: { id: 'demo@crx2xpi.local' },
+    });
+    // Downgrade-specific fields are still present alongside the rewrites.
+    expect(rewritten.background).toEqual({
+      scripts: [CHROME_SHIM_ENTRY_NAME, POLYFILL_ENTRY_NAME, 'background.js'],
+      persistent: false,
+    });
+  });
+
   it('round-trips a real converted XPI through the unpacking path again', () => {
     const crxPath = join(workDir, 'demo.crx');
     const outputPath = join(workDir, 'demo.xpi');
@@ -358,5 +398,44 @@ describe('convertCrxToXpi', () => {
     const zip = new AdmZip(xpiBytes);
     expect(zip.getEntry('manifest.json')).not.toBeNull();
     expect(zip.getEntryCount()).toBe(3);
+  });
+});
+
+describe('analyzeCrx', () => {
+  it('reports Chrome-only API usage without modifying the source CRX', () => {
+    const crxPath = join(workDir, 'analyze.crx');
+    const before = buildCrx3(
+      makeExtensionZip(MV3_MANIFEST, {
+        'background.js': 'chrome.offscreen.createDocument({});',
+        'ui/popup.js': 'chrome.tabGroups.query({});',
+      })
+    );
+    writeFileSync(crxPath, before);
+
+    const report = analyzeCrx(crxPath);
+
+    expect(report.name).toBe('Demo');
+    expect(report.scannedFiles).toBe(2);
+    expect(report.findings.map((finding) => finding.code)).toEqual([
+      'chrome.offscreen',
+      'chrome.tabGroups',
+    ]);
+    // Read-only: the input file is byte-identical after analysis.
+    expect(readFileSync(crxPath)).toEqual(before);
+  });
+
+  it('returns an empty finding set when no Chrome-only API is used', () => {
+    const crxPath = join(workDir, 'clean.crx');
+    writeFileSync(
+      crxPath,
+      buildCrx3(makeExtensionZip(MV3_MANIFEST, { 'background.js': 'chrome.tabs.query({});' }))
+    );
+
+    expect(analyzeCrx(crxPath).findings).toEqual([]);
+  });
+
+  it('propagates header and manifest errors like the converter', () => {
+    const missing = join(workDir, 'missing.crx');
+    expect(() => analyzeCrx(missing)).toThrow(ConversionError);
   });
 });

@@ -139,7 +139,14 @@ function assertManifestVersion(value: unknown): asserts value is 2 | 3 {
 function parseBackground(
   value: unknown,
   manifestVersion: 2 | 3
-): { service_worker?: string; scripts?: string[]; type?: 'classic' | 'module' } | undefined {
+):
+  | {
+      service_worker?: string;
+      scripts?: string[];
+      type?: 'classic' | 'module';
+      persistent?: boolean;
+    }
+  | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -153,6 +160,7 @@ function parseBackground(
   const serviceWorker = parseOptionalWorker(value.service_worker);
   const scripts = parseScripts(value.scripts);
   const type = parseBackgroundType(value.type);
+  const persistent = parsePersistent(value.persistent);
 
   // Conditional spread instead of assigning undefined: exactOptionalPropertyTypes
   // forbids explicitly setting an optional property to undefined.
@@ -160,7 +168,31 @@ function parseBackground(
     ...(serviceWorker === undefined ? {} : { service_worker: serviceWorker }),
     ...(scripts === undefined ? {} : { scripts }),
     ...(type === undefined ? {} : { type }),
+    ...(persistent === undefined ? {} : { persistent }),
   };
+}
+
+/**
+ * Validate the optional MV2 `background.persistent` flag.
+ *
+ * WHY preserved: an MV2 event page may legitimately be persistent (the author
+ * chose `true`); dropping it when the converter writes the manifest back would
+ * silently change background lifecycle. MV3 downgrades override it separately.
+ *
+ * @param value - Untrusted `background.persistent` value.
+ * @returns The validated flag, or undefined when not declared.
+ * @throws {ManifestValidationError} When the value is present but not boolean.
+ */
+function parsePersistent(value: unknown): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'boolean') {
+    throw new ManifestValidationError(
+      'manifest.background.persistent must be a boolean when present'
+    );
+  }
+  return value;
 }
 
 /**

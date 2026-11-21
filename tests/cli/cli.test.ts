@@ -41,6 +41,7 @@ describe('parseCliArgs', () => {
       output: 'b.xpi',
       verbose: false,
       keepTemp: false,
+      report: undefined,
     });
   });
 
@@ -133,6 +134,21 @@ describe('runCli', () => {
       'chrome-promise-shim.js',
       'browser-polyfill.js',
     ]);
+  });
+
+  it('writes a compatibility report with --report', () => {
+    const crxPath = join(workDir, 'sample.crx');
+    const outputPath = join(workDir, 'sample.xpi');
+    const reportPath = join(workDir, 'report.md');
+    writeFileSync(crxPath, fixtureBytes());
+    const io = recordingIo();
+
+    const exitCode = runCli(['--report', reportPath, crxPath, outputPath], io);
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(reportPath)).toBe(true);
+    expect(readFileSync(reportPath, 'utf8')).toContain('# crx2xpi compatibility report');
+    expect(io.out.some((line) => line.startsWith('compatibility report written to:'))).toBe(true);
   });
 
   it('fails with exit code 1 and an error message for missing input', () => {

@@ -99,6 +99,18 @@ describe('publish-audit script', () => {
     expect(result.output).toContain('email address');
   });
 
+  it('allows the generated Gecko add-on id but still rejects real emails', () => {
+    const dir = makePackage('addon-id');
+    writeFileSync(
+      join(dir, 'dist', 'cli.js'),
+      'const id = "my-extension@crx2xpi.local";\n// contact real.person@example.org\n'
+    );
+    const result = runAudit(dir);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('example.org');
+    expect(result.output).not.toContain('crx2xpi.local');
+  });
+
   it('fails when package.json author carries an email address', () => {
     const dir = makePackage('author');
     const manifest = JSON.parse(readFileSyncSafe(join(dir, 'package.json')));

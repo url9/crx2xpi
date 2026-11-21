@@ -7,10 +7,12 @@
  * directory on disk. The CLI owns presentation only: all conversion logic
  * lives in `src/core/` so the engine stays embeddable as a library.
  */
+import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError } from 'commander';
-import { convertCrxToXpi } from './core/converter.js';
+import { analyzeCrx, convertCrxToXpi } from './core/converter.js';
+import { renderReportMarkdown } from './core/diagnostics.js';
 
 /** Parsed CLI invocation. */
 export interface CliOptions {
@@ -22,6 +24,8 @@ export interface CliOptions {
   verbose: boolean;
   /** Whether to keep the extracted payload directory (`--keep-temp`). */
   keepTemp: boolean;
+  /** Optional path to write a static compatibility Markdown report (`--report`). */
+  report: string | undefined;
 }
 
 /** Output channels injected into the CLI, swappable for tests. */
@@ -63,12 +67,17 @@ export function parseCliArgs(argv: string[]): CliOptions {
     .argument('<input.crx>', 'source Chrome CRX3 extension file')
     .argument('<output.xpi>', 'destination Firefox XPI add-on file')
     .option('-v, --verbose', 'print detailed conversion progress', false)
-    .option('-k, --keep-temp', 'keep the extracted payload directory for debugging', false);
+    .option('-k, --keep-temp', 'keep the extracted payload directory for debugging', false)
+    .option('-r, --report <path>', 'write a static compatibility Markdown report');
 
   program.parse(argv, { from: 'user' });
   const [input, output] = program.args;
-  const { verbose, keepTemp } = program.opts<{ verbose: boolean; keepTemp: boolean }>();
-  return { input, output, verbose, keepTemp };
+  const { verbose, keepTemp, report } = program.opts<{
+    verbose: boolean;
+    keepTemp: boolean;
+    report?: string;
+  }>();
+  return { input, output, verbose, keepTemp, report };
 }
 
 /**
@@ -87,7 +96,7 @@ export function runCli(argv: string[], io: CliIo = defaultIo): number {
     // argument name); surfacing it verbatim beats re-parsing the cause.
     const message = error instanceof CommanderError ? error.message.trim() : String(error);
     io.error(`crx2xpi: ${message}`);
-    io.error('usage: crx2xpi <input.crx> <output.xpi> [--verbose] [--keep-temp]');
+    io.error('usage: crx2xpi <input.crx> <output.xpi> [--verbose] [--keep-temp] [--report <path>]');
     return 1;
   }
 
@@ -102,6 +111,18 @@ export function runCli(argv: string[], io: CliIo = defaultIo): number {
     );
     if (result.tempDir !== undefined) {
       io.log(`kept extracted payload for debugging at: ${result.tempDir}`);
+    }
+    if (options.report !== undefined) {
+      try {
+        const report = analyzeCrx(options.input);
+        writeFileSync(options.report, renderReportMarkdown(report), 'utf8');
+        io.log(`compatibility report written to: ${options.report}`);
+      } catch (error) {
+        io.error(
+          `report generation failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+        return 1;
+      }
     }
     return 0;
   } catch (error) {

@@ -156,6 +156,12 @@ describe('parseManifest — missing / invalid fields', () => {
 
     expect(() => parseManifest(raw)).toThrow(/scripts/);
   });
+
+  it('rejects a background.persistent that is not boolean', () => {
+    const raw = { ...makeMv2Manifest(), background: { scripts: ['bg.js'], persistent: 'yes' } };
+
+    expect(() => parseManifest(raw)).toThrow(/persistent/);
+  });
 });
 
 describe('parseManifest — legacy MV2', () => {
@@ -167,6 +173,18 @@ describe('parseManifest — legacy MV2', () => {
     expect(result.downgradeApplied).toBe(false);
     expect(result.geckoBackground).toBeUndefined();
     expect(result.manifest.background).toEqual({ scripts: ['bg.js'] });
+  });
+
+  it('preserves a valid background.persistent flag for MV2', () => {
+    const raw: WebExtensionManifest = {
+      ...makeMv2Manifest(),
+      background: { scripts: ['bg.js'], persistent: true },
+    };
+
+    expect(parseManifest(raw).manifest.background).toEqual({
+      scripts: ['bg.js'],
+      persistent: true,
+    });
   });
 
   it('rejects an MV2 manifest that declares a service_worker', () => {
