@@ -19,8 +19,11 @@ signed-ready XPI.
 > unpacking, the MV3 `service_worker` downgrade, Gecko manifest rewrites, the
 > chrome alias shim, polyfill injection, compatibility diagnostics, and XPI
 > repacking are implemented and covered by unit, integration (real CRX3
-> sample), and CLI tests. See [CONTRIBUTING.md](./CONTRIBUTING.md) to help
-> improve it.
+> sample), and CLI tests. Six converted extensions have also been verified
+> functionally in a real Firefox browser, and the diagnostic catalogue was
+> checked against seven real-world samples (zero false-positive warnings);
+> see [verified compatibility findings](./docs/verified-compat-findings.md).
+> See [CONTRIBUTING.md](./CONTRIBUTING.md) to help improve it.
 
 ## CLI usage
 
