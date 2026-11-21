@@ -2,6 +2,8 @@
 
 English | [中文](README.zh.md)
 
+[![npm](https://img.shields.io/npm/v/crx2xpi?style=for-the-badge&color=2f7cf6&logo=npm&logoColor=white)](https://www.npmjs.com/package/crx2xpi) [![CI](https://img.shields.io/badge/CI-passing-2f7cf6?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/url9/crx2xpi/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-Apache--2.0-2f7cf6?style=for-the-badge)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-2f7cf6?style=for-the-badge&logo=node.js&logoColor=white)](./package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-2f7cf6?style=for-the-badge&logo=typescript&logoColor=white)](./tsconfig.json)
+
 > Convert Chrome MV3 extensions (CRX3) into Firefox / GeckoView-compatible XPI add-ons.
 
 `crx2xpi` is a community-maintained bridge between the Chromium WebExtension
@@ -19,10 +21,10 @@ XPI.
 
 ## CLI usage
 
-Install globally, run with `npx`, or use it directly from a checkout:
+Run without installing via `npx`, or install from npm:
 
 ```bash
-# After installing from npm (once published) or via a global install
+# Run with npx — no installation needed (Node.js >= 20 required)
 npx crx2xpi my-extension.crx my-extension.xpi
 
 # Verbose mode prints every conversion stage
@@ -30,6 +32,21 @@ npx crx2xpi --verbose my-extension.crx my-extension.xpi
 
 # Keep the extracted payload directory on disk for debugging
 npx crx2xpi --keep-temp my-extension.crx my-extension.xpi
+```
+
+Install from npm:
+
+```bash
+# Global install adds the crx2xpi command to your PATH
+npm install -g crx2xpi
+crx2xpi my-extension.crx my-extension.xpi
+
+# Or use the conversion engine as a library
+npm install crx2xpi
+```
+
+```js
+import { convertCrxToXpi } from 'crx2xpi/dist/core/converter.js';
 ```
 
 From a repository checkout, run the built binary directly:

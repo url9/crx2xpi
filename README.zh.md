@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+[![npm](https://img.shields.io/npm/v/crx2xpi?style=for-the-badge&color=2f7cf6&logo=npm&logoColor=white)](https://www.npmjs.com/package/crx2xpi) [![CI](https://img.shields.io/badge/CI-passing-2f7cf6?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/url9/crx2xpi/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-Apache--2.0-2f7cf6?style=for-the-badge)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-2f7cf6?style=for-the-badge&logo=node.js&logoColor=white)](./package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-2f7cf6?style=for-the-badge&logo=typescript&logoColor=white)](./tsconfig.json)
+
 > 将 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。
 
 `crx2xpi` 是一座连接 Chromium WebExtension 运行时与 Gecko 的社区维护桥梁：把 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。它会剥离 CRX3 签名头、重写 MV3 特有的 manifest 字段（尤其是 `service_worker` 降级），并注入 `webextension-polyfill`，最后打包为可直接签名的 XPI。
@@ -10,10 +12,10 @@
 
 ## CLI 使用说明
 
-全局安装、用 `npx` 运行，或直接从仓库源码运行：
+用 `npx` 免安装运行，或从 npm 安装：
 
 ```bash
-# 从 npm 安装（发布后）或全局安装后
+# npx 免安装运行（需要 Node.js >= 20）
 npx crx2xpi my-extension.crx my-extension.xpi
 
 # 详细模式：打印每个转换阶段
@@ -21,6 +23,21 @@ npx crx2xpi --verbose my-extension.crx my-extension.xpi
 
 # 保留解压后的临时目录以便调试
 npx crx2xpi --keep-temp my-extension.crx my-extension.xpi
+```
+
+从 npm 安装：
+
+```bash
+# 全局安装后可直接使用 crx2xpi 命令
+npm install -g crx2xpi
+crx2xpi my-extension.crx my-extension.xpi
+
+# 或将转换引擎作为库引入
+npm install crx2xpi
+```
+
+```js
+import { convertCrxToXpi } from 'crx2xpi/dist/core/converter.js';
 ```
 
 从仓库源码运行已构建的二进制：
