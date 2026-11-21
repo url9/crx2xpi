@@ -9,12 +9,15 @@ English | [中文](README.zh.md)
 `crx2xpi` is a community-maintained bridge between the Chromium WebExtension
 runtime and Gecko: it turns Chrome MV3 extensions (CRX3) into
 Firefox / GeckoView-compatible XPI add-ons. It strips the CRX3 signing
-header, rewrites MV3-specific manifest fields (notably the `service_worker`
-downgrade), and injects the `webextension-polyfill` before packaging a signed-ready
-XPI.
+header, rewrites manifest fields for Gecko (the MV3 `service_worker` downgrade,
+a stable Gecko add-on id, permission/WAR/CSP normalisation, and removal of
+Chrome-only keys), injects the `webextension-polyfill` and a `chrome` alias
+shim, and can emit a static compatibility report — all before packaging a
+signed-ready XPI.
 
 > **Status:** the conversion engine and CLI are working end to end. CRX3
-> unpacking, the MV3 `service_worker` downgrade, polyfill injection, and XPI
+> unpacking, the MV3 `service_worker` downgrade, Gecko manifest rewrites, the
+> chrome alias shim, polyfill injection, compatibility diagnostics, and XPI
 > repacking are implemented and covered by unit, integration (real CRX3
 > sample), and CLI tests. See [CONTRIBUTING.md](./CONTRIBUTING.md) to help
 > improve it.
@@ -32,6 +35,9 @@ npx crx2xpi --verbose my-extension.crx my-extension.xpi
 
 # Keep the extracted payload directory on disk for debugging
 npx crx2xpi --keep-temp my-extension.crx my-extension.xpi
+
+# Also write a static compatibility report (Markdown)
+npx crx2xpi --report report.md my-extension.crx my-extension.xpi
 ```
 
 Install from npm:
@@ -62,8 +68,9 @@ Options:
 | --- | --- | --- |
 | `<input.crx>` | — | Source Chrome CRX3 extension file. |
 | `<output.xpi>` | — | Destination Firefox XPI add-on file (parent directories are created). |
-| `--verbose` | `-v` | Print detailed progress: header validation, manifest parsing, polyfill injection, repacking. |
+| `--verbose` | `-v` | Print detailed progress: header validation, manifest parsing, rewrites, repacking. |
 | `--keep-temp` | `-k` | Keep the extracted payload directory for debugging; its path is printed on success. |
+| `--report <path>` | `-r` | Write a static compatibility Markdown report listing Chrome-only API usage and `importScripts()` calls that need manual review. |
 
 Example session with `--verbose`:
 
@@ -89,6 +96,38 @@ converted by `crx2xpi`, deletes its cookies for real when a tab closes in
 Firefox (including HttpOnly cookies), which requires the promise shim to be in
 place.
 
+## Manifest rewrites for Gecko
+
+Beyond the background downgrade, the converter applies a small, idempotent set
+of manifest rewrites that close well-understood Chrome/Gecko gaps:
+
+| Rewrite | Why |
+| --- | --- |
+| Stable `browser_specific_settings.gecko.id` | Without a fixed id a side-loaded add-on gets a new random id on every load, silently breaking id-scoped storage and settings. An existing id is never overwritten. |
+| Host patterns moved from `permissions` to `host_permissions` | Firefox MV3 treats host patterns in `permissions` as unknown API permissions and denies the host access. |
+| Chrome-only keys removed (`key`, `update_url`, `minimum_chrome_version`, `oauth2`, `export`) | `update_url` in particular can make some Firefox builds attempt a Chrome Web Store update. |
+| MV3 `browser_action` renamed to `action` | `action` is the standard MV3 key. |
+| `use_dynamic_url` stripped from `web_accessible_resources` | Firefox does not implement dynamic-URL ids; the flag can invalidate the resource declaration. |
+| String CSP normalised to the MV3 object form | A bare CSP string is MV2 syntax that Firefox MV3 rejects. |
+
+The rewrites are intentionally conservative. In particular `crx2xpi` does **not**
+force `content_scripts[].all_frames`, add `'wasm-unsafe-eval'` to CSP, drop
+`background.type` (needed for module workers), or inject a fixed bundle of
+runtime shims that could shadow native Firefox APIs. Those changes either alter
+behaviour or widen the security policy, so they are left to the developer.
+
+## Static compatibility report
+
+`--report <path>` runs a read-only analysis of the source CRX and writes a
+Markdown report. It flags Chrome-only API usage (`offscreen`, `sidePanel`,
+`tabGroups`, `declarativeContent`, and others) with the exact file and line, plus
+`importScripts()` calls that may need manual review. Findings are graded
+`warning` or `info` and include a suggested action.
+
+The report never rewrites source code or injects shims, and it explicitly notes
+that static analysis cannot prove runtime correctness — always validate the
+converted XPI in a real Firefox browser.
+
 ## How to install the generated XPI (Installation)
 
 > On desktop Release and Beta, extensions not signed by Mozilla cannot be
@@ -97,12 +136,14 @@ place.
 > installation on desktop Release. Choose the method that fits your scenario
 > below:
 >
-> **Prerequisite**: except for `about:debugging` temporary loading, every
+> **Extension ID**: except for `about:debugging` temporary loading, every
 > installation method (Android install-from-file, AMO signing) requires an
 > extension ID in the XPI's `manifest.json`
-> (`browser_specific_settings.gecko.id`). If the source extension does not
-> declare one, add it manually to the converted manifest (for example
-> `"id": "@your-extension-id"`).
+> (`browser_specific_settings.gecko.id`). `crx2xpi` generates a stable, valid
+> email-style id automatically (for example `my-extension@crx2xpi.local`) when
+> the source does not declare one, and never overwrites an id that is already
+> present. For AMO submission you may still want to replace it with your own
+> chosen id before signing.
 
 ### Scenario 1: Desktop testing (Firefox Developer Edition / Nightly / ESR)
 

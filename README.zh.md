@@ -6,9 +6,9 @@
 
 > 将 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。
 
-`crx2xpi` 是一座连接 Chromium WebExtension 运行时与 Gecko 的社区维护桥梁：把 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。它会剥离 CRX3 签名头、重写 MV3 特有的 manifest 字段（尤其是 `service_worker` 降级），并注入 `webextension-polyfill`，最后打包为可直接签名的 XPI。
+`crx2xpi` 是一座连接 Chromium WebExtension 运行时与 Gecko 的社区维护桥梁：把 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。它会剥离 CRX3 签名头、重写适配 Gecko 的 manifest 字段（MV3 `service_worker` 降级、稳定的 Gecko 附加组件 ID、权限/WAR/CSP 规范化，以及移除 Chrome 专有键）、注入 `webextension-polyfill` 和 `chrome` 别名 shim，并可生成静态兼容性报告，最后打包为可直接签名的 XPI。
 
-> **状态：** 转换引擎和 CLI 已端到端可用。CRX3 解包、MV3 `service_worker` 降级、polyfill 注入和 XPI 重打包均已实现，并有单元测试、集成测试（真实 CRX3 样本）和 CLI 测试覆盖。欢迎通过 [CONTRIBUTING.md](./CONTRIBUTING.zh.md) 参与改进。
+> **状态：** 转换引擎和 CLI 已端到端可用。CRX3 解包、MV3 `service_worker` 降级、Gecko manifest 重写、chrome 别名 shim、polyfill 注入、兼容性诊断和 XPI 重打包均已实现，并有单元测试、集成测试（真实 CRX3 样本）和 CLI 测试覆盖。欢迎通过 [CONTRIBUTING.md](./CONTRIBUTING.zh.md) 参与改进。
 
 ## CLI 使用说明
 
@@ -23,6 +23,9 @@ npx crx2xpi --verbose my-extension.crx my-extension.xpi
 
 # 保留解压后的临时目录以便调试
 npx crx2xpi --keep-temp my-extension.crx my-extension.xpi
+
+# 同时生成静态兼容性报告（Markdown）
+npx crx2xpi --report report.md my-extension.crx my-extension.xpi
 ```
 
 从 npm 安装：
@@ -53,8 +56,9 @@ node dist/cli.js --verbose sample.crx out/sample.xpi
 | --- | --- | --- |
 | `<input.crx>` | — | 源 Chrome CRX3 扩展文件。 |
 | `<output.xpi>` | — | 目标 Firefox XPI 附加组件文件（父目录会自动创建）。 |
-| `--verbose` | `-v` | 打印详细进度：头校验、manifest 解析、polyfill 注入、重打包。 |
+| `--verbose` | `-v` | 打印详细进度：头校验、manifest 解析、重写、重打包。 |
 | `--keep-temp` | `-k` | 保留解压后的载荷目录以便调试；成功时会打印其路径。 |
+| `--report <path>` | `-r` | 写出静态兼容性 Markdown 报告，列出需要人工复核的 Chrome 专有 API 用法与 `importScripts()` 调用。 |
 
 `--verbose` 的运行示例：
 
@@ -68,11 +72,32 @@ CLI 成功时退出码为 `0`，用法或转换错误时为 `1`。
 
 上述行为已通过端到端实测验证：开源扩展 CookieMop 经 `crx2xpi` 转换后，在 Firefox 中关闭标签页时会真实删除对应 Cookie（包括 HttpOnly Cookie），而这依赖 Promise shim 的存在。
 
+## 面向 Gecko 的 manifest 重写
+
+除后台降级外，转换器还会应用一组小而幂等的 manifest 重写，填补已知的 Chrome/Gecko 差异：
+
+| 重写 | 原因 |
+| --- | --- |
+| 稳定的 `browser_specific_settings.gecko.id` | 没有固定 ID，侧载的附加组件每次加载都会得到新的随机 ID，静默破坏按 ID 隔离的存储与设置。已有 ID 绝不覆盖。 |
+| 将 host 匹配模式从 `permissions` 移入 `host_permissions` | Firefox MV3 会把 `permissions` 中的 host 模式当作未知的 API 权限，从而拒绝该主机的访问。 |
+| 移除 Chrome 专有键（`key`、`update_url`、`minimum_chrome_version`、`oauth2`、`export`） | 其中 `update_url` 会让某些 Firefox 构建尝试从 Chrome 网上应用店更新。 |
+| MV3 的 `browser_action` 重命名为 `action` | `action` 是标准的 MV3 键。 |
+| 从 `web_accessible_resources` 中剥离 `use_dynamic_url` | Firefox 未实现动态 URL ID，该标志可能使资源声明失效。 |
+| 字符串形式的 CSP 规范化为 MV3 对象形式 | 裸 CSP 字符串是 MV2 语法，Firefox MV3 会拒绝。 |
+
+这些重写刻意保持保守。特别是 `crx2xpi` **不会**强制 `content_scripts[].all_frames`，不会向 CSP 添加 `'wasm-unsafe-eval'`，不会删除 `background.type`（模块 worker 需要它），也不会注入固定的运行时 shim 包（那可能遮蔽原生 Firefox API）。这些改动要么改变行为、要么放宽安全策略，因此交由开发者决定。
+
+## 静态兼容性报告
+
+`--report <path>` 对源 CRX 进行只读分析并写出 Markdown 报告。它会标注 Chrome 专有 API 用法（`offscreen`、`sidePanel`、`tabGroups`、`declarativeContent` 等）及其确切文件与行号，以及可能需要人工复核的 `importScripts()` 调用。发现项按 `warning` 或 `info` 分级，并附建议操作。
+
+该报告从不改写源码或注入 shim，并明确指出静态分析无法证明运行时正确性——请务必在真实 Firefox 浏览器中验证转换后的 XPI。
+
 ## 如何安装生成的 XPI
 
 > 在桌面端 Release 和 Beta 中，未经 Mozilla 签名的扩展无法安装。而在 Android 上，「从文件安装」菜单接受未签名的包，因此只有在官方分发或桌面 Release 上安装时才必须进行 AMO 签名。请根据使用场景选择以下方式：
 >
-> **前提**：除 `about:debugging` 临时载入外，所有安装方式（Android 从文件安装、AMO 签名）都要求 XPI 的 `manifest.json` 中包含扩展 ID（`browser_specific_settings.gecko.id`）。若源扩展未声明该字段，请在转换后的 manifest 中手动补上（例如 `"id": "@your-extension-id"`）。
+> **扩展 ID**：除 `about:debugging` 临时载入外，所有安装方式（Android 从文件安装、AMO 签名）都要求 XPI 的 `manifest.json` 中包含扩展 ID（`browser_specific_settings.gecko.id`）。当源扩展未声明时，`crx2xpi` 会自动生成稳定且合法的 email 形式 ID（例如 `my-extension@crx2xpi.local`），且绝不覆盖已有 ID。若提交 AMO，你仍可在签名前将其替换为自己选定的 ID。
 
 ### 场景一：桌面端测试（Firefox Developer Edition / Nightly / ESR）
 
