@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Only pull requests are opened; no auto-merge is configured, so a human
+    # reviews every update before it lands.
+    groups:
+      # All development dependencies share one PR. Runtime dependencies
+      # (adm-zip, commander) match no group and therefore get their own PRs.
+      dev-deps:
+        dependency-type: development
