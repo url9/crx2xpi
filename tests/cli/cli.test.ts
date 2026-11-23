@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CommanderError } from 'commander';
+import AdmZip from 'adm-zip';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CliIo } from '../../src/cli.js';
 import { parseCliArgs, runCli } from '../../src/cli.js';
@@ -42,6 +43,7 @@ describe('parseCliArgs', () => {
       verbose: false,
       keepTemp: false,
       report: undefined,
+      id: undefined,
     });
   });
 
@@ -53,6 +55,15 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['--verbose', '-k', 'a.crx', 'b.xpi'])).toMatchObject({
       verbose: true,
       keepTemp: true,
+    });
+  });
+
+  it('recognises the short and long forms of the custom id option', () => {
+    expect(parseCliArgs(['-i', 'my-ext@domain.com', 'a.crx', 'b.xpi'])).toMatchObject({
+      id: 'my-ext@domain.com',
+    });
+    expect(parseCliArgs(['--id', 'other@x.org', 'a.crx', 'b.xpi'])).toMatchObject({
+      id: 'other@x.org',
     });
   });
 
@@ -80,6 +91,37 @@ describe('runCli', () => {
     expect(existsSync(outputPath)).toBe(true);
     expect(io.out[0]).toContain('downgraded: yes');
     expect(io.err).toEqual([]);
+  });
+
+  it('applies --id to the converted manifest', () => {
+    const crxPath = join(workDir, 'sample.crx');
+    const outputPath = join(workDir, 'sample.xpi');
+    writeFileSync(crxPath, fixtureBytes());
+    const io = recordingIo();
+
+    const exitCode = runCli([crxPath, outputPath, '-i', 'my-ext@domain.com'], io);
+
+    expect(exitCode).toBe(0);
+    const manifest = JSON.parse(new AdmZip(outputPath).readAsText('manifest.json')) as Record<
+      string,
+      unknown
+    >;
+    expect(manifest.browser_specific_settings).toEqual({
+      gecko: { id: 'my-ext@domain.com' },
+    });
+  });
+
+  it('fails with exit code 1 and the canonical message for an invalid --id', () => {
+    const crxPath = join(workDir, 'sample.crx');
+    const outputPath = join(workDir, 'sample.xpi');
+    writeFileSync(crxPath, fixtureBytes());
+    const io = recordingIo();
+
+    const exitCode = runCli([crxPath, outputPath, '--id', '悦览@local'], io);
+
+    expect(exitCode).toBe(1);
+    expect(existsSync(outputPath)).toBe(false);
+    expect(io.err.join('\n')).toContain('Invalid Gecko ID format');
   });
 
   it('prints one progress log per stage when --verbose is set', () => {

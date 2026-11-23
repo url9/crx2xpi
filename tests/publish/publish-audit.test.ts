@@ -111,6 +111,23 @@ describe('publish-audit script', () => {
     expect(result.output).not.toContain('crx2xpi.local');
   });
 
+  it('allows the CLI doc-example placeholder domain used in help and error text', () => {
+    // The --id help line and the InvalidGeckoIdError message ship placeholder
+    // addresses (`@domain.com`); they are not contact addresses.
+    const dir = makePackage('doc-example');
+    writeFileSync(join(dir, 'dist', 'cli.js'), '// e.g. my-ext@domain.com (name@domain.com)\n');
+    const result = runAudit(dir);
+    expect(result.status).toBe(0);
+  });
+
+  it('still rejects placeholder-adjacent real-looking emails on other domains', () => {
+    const dir = makePackage('doc-example-near');
+    writeFileSync(join(dir, 'dist', 'cli.js'), '// reach me at someone@mydomain.com\n');
+    const result = runAudit(dir);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('email address');
+  });
+
   it('fails when package.json author carries an email address', () => {
     const dir = makePackage('author');
     const manifest = JSON.parse(readFileSyncSafe(join(dir, 'package.json')));

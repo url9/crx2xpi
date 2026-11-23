@@ -14,6 +14,7 @@ import {
   injectChromeShimIntoHtml,
   parseCrx3Header,
 } from '../../src/core/converter.js';
+import { InvalidGeckoIdError } from '../../src/core/manifest-rewrite.js';
 import { ManifestValidationError } from '../../src/parsers/manifest-parser.js';
 
 /**
@@ -256,7 +257,7 @@ describe('convertCrxToXpi', () => {
     // stable Gecko id, but receives no service-worker shim or polyfill.
     expect(manifest).toEqual({
       ...MV2_MANIFEST,
-      browser_specific_settings: { gecko: { id: 'legacy@crx2xpi.local' } },
+      browser_specific_settings: { gecko: { id: '1432897a6136@crx2xpi.local' } },
     });
     expect(xpi.getEntry(POLYFILL_ENTRY_NAME)).toBeNull();
     expect(xpi.getEntry(CHROME_SHIM_ENTRY_NAME)).toBeNull();
@@ -375,13 +376,41 @@ describe('convertCrxToXpi', () => {
     expect(rewritten.host_permissions).toEqual(['https://example.com/*']);
     expect(rewritten.content_security_policy).toEqual({ extension_pages: "script-src 'self'" });
     expect(rewritten.browser_specific_settings).toEqual({
-      gecko: { id: 'demo@crx2xpi.local' },
+      gecko: { id: '8a2cc0673b1c@crx2xpi.local' },
     });
     // Downgrade-specific fields are still present alongside the rewrites.
     expect(rewritten.background).toEqual({
       scripts: [CHROME_SHIM_ENTRY_NAME, POLYFILL_ENTRY_NAME, 'background.js'],
       persistent: false,
     });
+  });
+
+  it('applies a valid customGeckoId end to end', () => {
+    const crxPath = join(workDir, 'demo.crx');
+    const outputPath = join(workDir, 'demo-custom-id.xpi');
+    writeFileSync(crxPath, buildCrx3(makeExtensionZip(MV3_MANIFEST)));
+
+    convertCrxToXpi(crxPath, outputPath, { customGeckoId: 'my-ext@domain.com' });
+
+    const rewritten = JSON.parse(new AdmZip(outputPath).readAsText('manifest.json')) as Record<
+      string,
+      unknown
+    >;
+    expect(rewritten.browser_specific_settings).toEqual({
+      gecko: { id: 'my-ext@domain.com' },
+    });
+  });
+
+  it('throws InvalidGeckoIdError before any conversion work for a malformed customGeckoId', () => {
+    const crxPath = join(workDir, 'demo.crx');
+    writeFileSync(crxPath, buildCrx3(makeExtensionZip(MV3_MANIFEST)));
+    const outputPath = join(workDir, 'demo-bad-id.xpi');
+
+    expect(() =>
+      convertCrxToXpi(crxPath, outputPath, { customGeckoId: '悦览@local' })
+    ).toThrowError(InvalidGeckoIdError);
+    // Fail-fast contract: no output file may exist for a rejected id.
+    expect(existsSync(outputPath)).toBe(false);
   });
 
   it('round-trips a real converted XPI through the unpacking path again', () => {

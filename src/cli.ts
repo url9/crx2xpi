@@ -26,6 +26,8 @@ export interface CliOptions {
   keepTemp: boolean;
   /** Optional path to write a static compatibility Markdown report (`--report`). */
   report: string | undefined;
+  /** Optional custom Gecko add-on id (`--id`), used when the manifest has none. */
+  id: string | undefined;
 }
 
 /** Output channels injected into the CLI, swappable for tests. */
@@ -68,16 +70,21 @@ export function parseCliArgs(argv: string[]): CliOptions {
     .argument('<output.xpi>', 'destination Firefox XPI add-on file')
     .option('-v, --verbose', 'print detailed conversion progress', false)
     .option('-k, --keep-temp', 'keep the extracted payload directory for debugging', false)
-    .option('-r, --report <path>', 'write a static compatibility Markdown report');
+    .option('-r, --report <path>', 'write a static compatibility Markdown report')
+    .option(
+      '-i, --id <id>',
+      'custom Gecko add-on ID used when the source manifest has none (e.g., my-ext@domain.com)'
+    );
 
   program.parse(argv, { from: 'user' });
   const [input, output] = program.args;
-  const { verbose, keepTemp, report } = program.opts<{
+  const { verbose, keepTemp, report, id } = program.opts<{
     verbose: boolean;
     keepTemp: boolean;
     report?: string;
+    id?: string;
   }>();
-  return { input, output, verbose, keepTemp, report };
+  return { input, output, verbose, keepTemp, report, id };
 }
 
 /**
@@ -96,7 +103,9 @@ export function runCli(argv: string[], io: CliIo = defaultIo): number {
     // argument name); surfacing it verbatim beats re-parsing the cause.
     const message = error instanceof CommanderError ? error.message.trim() : String(error);
     io.error(`crx2xpi: ${message}`);
-    io.error('usage: crx2xpi <input.crx> <output.xpi> [--verbose] [--keep-temp] [--report <path>]');
+    io.error(
+      'usage: crx2xpi <input.crx> <output.xpi> [--verbose] [--keep-temp] [--report <path>] [--id <id>]'
+    );
     return 1;
   }
 
@@ -104,6 +113,7 @@ export function runCli(argv: string[], io: CliIo = defaultIo): number {
     const result = convertCrxToXpi(options.input, options.output, {
       ...(options.verbose ? { onProgress: (event) => io.log(`[crx2xpi] ${event.detail}`) } : {}),
       ...(options.keepTemp ? { keepTempDir: true } : {}),
+      ...(options.id !== undefined ? { customGeckoId: options.id } : {}),
     });
 
     io.log(

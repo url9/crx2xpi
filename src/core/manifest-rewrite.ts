@@ -17,6 +17,7 @@
  * - inject a fixed set of runtime shims into every add-on — unconditional
  *   shims can shadow native APIs (e.g. assigning to read-only `scripting`).
  */
+import { createHash } from 'node:crypto';
 import type { WebExtensionManifest } from '../parsers/manifest-parser.js';
 
 /**
@@ -68,39 +69,64 @@ function isHostMatchPattern(value: string): boolean {
 }
 
 /**
- * Deterministic fallback id fragment derived from a name with no ASCII letters.
+ * Error thrown when a caller-supplied custom Gecko id fails validation.
  *
- * A djb2 hash keeps the rewrite pure (no `node:crypto` IO) and stable, so two
- * conversions of the same extension produce the same Gecko id.
- *
- * @param name - Original extension name, possibly non-ASCII.
- * @returns An unsigned hexadecimal hash fragment.
+ * A dedicated type (instead of a bare `Error`) keeps the failure distinguishable
+ * from manifest or CRX problems in callers that surface errors per cause.
  */
-function stableHash(name: string): string {
-  let hash = 5381;
-  for (let index = 0; index < name.length; index += 1) {
-    hash = ((hash << 5) + hash + name.charCodeAt(index)) | 0;
+export class InvalidGeckoIdError extends Error {
+  /**
+   * Create the error with the canonical validation message.
+   *
+   * @param id - The rejected id, included for diagnostics.
+   */
+  constructor(id: string) {
+    super(
+      `Invalid Gecko ID format: "${id}". It must look like an email address ` +
+        '(e.g., name@domain.com) and contain only ASCII characters.'
+    );
+    this.name = 'InvalidGeckoIdError';
   }
-  return (hash >>> 0).toString(16);
+}
+
+/** Gecko ids must match an email-like shape over an ASCII-safe character set. */
+const GECKO_ID_PATTERN = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z0-9.-]+$/;
+
+/**
+ * Validate a Gecko add-on id supplied by a caller or found in a manifest.
+ *
+ * Firefox accepts brace-wrapped UUIDs and email-shaped ids; this tool only
+ * synthesises the email shape, so validation enforces that shape strictly:
+ * ASCII characters only (no CJK, no whitespace), a single `@` separator and a
+ * dotted domain. The dot requirement is stricter than Firefox's own grammar
+ * and keeps every accepted id unambiguous.
+ *
+ * @param id - Candidate id string.
+ * @returns True when the id is safe to write into a manifest unchanged.
+ */
+export function isValidGeckoId(id: string): boolean {
+  return GECKO_ID_PATTERN.test(id);
 }
 
 /**
- * Convert an extension name into a valid email-style id local part.
+ * Derive a deterministic Gecko id from stable extension metadata.
  *
- * Firefox only allows `[a-zA-Z0-9._-]` before the `@`. Non-ASCII names (e.g.
- * Chinese) would otherwise yield an invalid or empty id, so illegal characters
- * collapse to `-` and an all-illegal name falls back to a stable hash.
+ * WHY SHA-256 over the display name only: the id must survive repeated
+ * conversions of the same extension (re-converts keep storage and settings
+ * scoped to the id), so the seed must be stable across versions — the name
+ * qualifies, the whole manifest or payload does not. SHA-256 (48-bit
+ * truncated) also replaces the retired name-slug scheme, whose 32-bit djb2
+ * fallback and lossy slugification could collide across differently named
+ * extensions.
  *
- * @param name - Add-on display name from the manifest.
- * @returns A non-empty, lowercase local part safe for a Gecko id.
+ * @param extensionName - Display name to seed the hash; an empty or missing
+ * name falls back to the stable sentinel `unknown-extension`.
+ * @returns An id of the form `<12 hex chars>@crx2xpi.local`.
  */
-export function sanitizeExtensionIdLocalPart(name: string): string {
-  const cleaned = name
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^[-.]+|[-.]+$/g, '');
-  return cleaned.length > 0 ? cleaned : `ext-${stableHash(name)}`;
+export function generateDeterministicGeckoId(extensionName: string): string {
+  const seed = extensionName.length > 0 ? extensionName : 'unknown-extension';
+  const hash = createHash('sha256').update(seed, 'utf8').digest('hex').slice(0, 12);
+  return `${hash}@${GECKO_ID_DOMAIN}`;
 }
 
 /**
@@ -110,22 +136,45 @@ export function sanitizeExtensionIdLocalPart(name: string): string {
  * `browser.management` and AMO submission. Without it a side-loaded build gets
  * a fresh random id on every load, silently breaking id-scoped state.
  *
- * Idempotence: an existing non-empty id is never overwritten, and sibling
- * `browser_specific_settings` / `gecko` keys are preserved verbatim.
+ * Id resolution order:
+ * 1. An existing non-empty manifest id — preserved verbatim, because it is
+ *    the extension's own identity and overriding it would break updates.
+ * 2. A caller-supplied `customGeckoId` — used only when the manifest has none;
+ *    it is validated first and a malformed value aborts the rewrite.
+ * 3. A deterministic id hashed from the display name — stable across
+ *    re-conversions of the same extension.
+ *
+ * Sibling `browser_specific_settings` / `gecko` keys are preserved verbatim.
  *
  * @param manifest - Manifest to rewrite (not mutated).
- * @returns A copy carrying a valid Gecko id when one was absent.
+ * @param customGeckoId - Optional caller-requested id, validated before use.
+ * @returns A copy carrying a valid Gecko id.
+ * @throws {InvalidGeckoIdError} When `customGeckoId` is provided but fails
+ * `isValidGeckoId`.
  */
-export function injectGeckoId(manifest: WebExtensionManifest): WebExtensionManifest {
+export function injectGeckoId(
+  manifest: WebExtensionManifest,
+  customGeckoId?: string
+): WebExtensionManifest {
   const settings = manifest.browser_specific_settings;
-  if (isPlainObject(settings)) {
-    const gecko = settings.gecko;
-    if (isPlainObject(gecko) && typeof gecko.id === 'string' && gecko.id.length > 0) {
-      return manifest;
-    }
-  }
-  const id = `${sanitizeExtensionIdLocalPart(manifest.name)}@${GECKO_ID_DOMAIN}`;
   const baseGecko = isPlainObject(settings) && isPlainObject(settings.gecko) ? settings.gecko : {};
+  const existingId = baseGecko.id;
+  if (typeof existingId === 'string' && existingId.length > 0) {
+    return manifest;
+  }
+  let id: string;
+  if (customGeckoId !== undefined) {
+    if (!isValidGeckoId(customGeckoId)) {
+      throw new InvalidGeckoIdError(customGeckoId);
+    }
+    id = customGeckoId;
+  } else {
+    // The seed must come from stable metadata only. `name` is schema-required,
+    // but defensively narrow it so a hand-cast nameless manifest still yields
+    // the `unknown-extension` sentinel instead of crashing on the hash.
+    const seedName = typeof manifest.name === 'string' ? manifest.name : '';
+    id = generateDeterministicGeckoId(seedName);
+  }
   return {
     ...manifest,
     browser_specific_settings: {
@@ -283,11 +332,18 @@ export function normalizeContentSecurityPolicy(
  * no-op. Version-specific rules gate themselves on `manifest_version`.
  *
  * @param manifest - Manifest to rewrite (not mutated).
+ * @param customGeckoId - Optional caller-requested Gecko id, used when the
+ * manifest carries none; validated before use.
  * @returns A fully rewritten copy safe to serialise into the XPI.
+ * @throws {InvalidGeckoIdError} When `customGeckoId` is provided but fails
+ * `isValidGeckoId`.
  */
-export function rewriteManifestForGecko(manifest: WebExtensionManifest): WebExtensionManifest {
+export function rewriteManifestForGecko(
+  manifest: WebExtensionManifest,
+  customGeckoId?: string
+): WebExtensionManifest {
   let rewritten = removeChromeOnlyFields(manifest);
-  rewritten = injectGeckoId(rewritten);
+  rewritten = injectGeckoId(rewritten, customGeckoId);
   rewritten = renameBrowserAction(rewritten);
   rewritten = splitHostPermissions(rewritten);
   rewritten = sanitizeWebAccessibleResources(rewritten);

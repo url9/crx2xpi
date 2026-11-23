@@ -42,6 +42,13 @@ const ALLOWED_EMAIL = 'url9_npm@163.com';
  * never a real contact address — and may legitimately appear in docs or code.
  */
 const ADDON_ID_DOMAIN = '@crx2xpi.local';
+/**
+ * Placeholder domains used in CLI help text and error messages
+ * (`my-ext@domain.com`, `name@domain.com`). Deliberately narrow: RFC 2606
+ * `example.com`/`example.org` stay flagged so a real contact address hiding
+ * behind a "documentation" domain is still caught.
+ */
+const DOC_EXAMPLE_DOMAINS = ['@domain.com', '@domain.org'];
 
 /**
  * A single failed audit check, rendered for humans and used for the exit code.
@@ -115,8 +122,11 @@ function auditTarballContent(root) {
     {
       name: 'email address',
       re: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,
-      // A generated Gecko id uses email syntax but is not a real address.
-      isException: (match) => match.toLowerCase().endsWith(ADDON_ID_DOMAIN),
+      // A generated Gecko id uses email syntax but is not a real address, and
+      // the CLI's help/error text carries placeholder example addresses.
+      isException: (match) =>
+        match.toLowerCase().endsWith(ADDON_ID_DOMAIN) ||
+        DOC_EXAMPLE_DOMAINS.some((domain) => match.toLowerCase().endsWith(domain)),
     },
     { name: 'GitHub token', re: /gh[posur]_[A-Za-z0-9]{30,}/g },
     { name: 'npm token', re: /npm_[A-Za-z0-9]{30,}/g },

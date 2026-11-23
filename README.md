@@ -77,6 +77,7 @@ Options:
 | `--verbose` | `-v` | Print detailed progress: header validation, manifest parsing, rewrites, repacking. |
 | `--keep-temp` | `-k` | Keep the extracted payload directory for debugging; its path is printed on success. |
 | `--report <path>` | `-r` | Write a static compatibility Markdown report listing Chrome-only API usage and `importScripts()` calls that need manual review. |
+| `--id <id>` | `-i` | Custom Gecko add-on ID used when the source manifest has none. Must look like an email address (ASCII only), e.g. `my-ext@domain.com`; when omitted, a deterministic ID is hashed from the extension name, so re-converting the same extension keeps the same ID. |
 
 Example session with `--verbose`:
 

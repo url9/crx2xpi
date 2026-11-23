@@ -59,6 +59,7 @@ node dist/cli.js --verbose sample.crx out/sample.xpi
 | `--verbose` | `-v` | 打印详细进度：头校验、manifest 解析、重写、重打包。 |
 | `--keep-temp` | `-k` | 保留解压后的载荷目录以便调试；成功时会打印其路径。 |
 | `--report <path>` | `-r` | 写出静态兼容性 Markdown 报告，列出需要人工复核的 Chrome 专有 API 用法与 `importScripts()` 调用。 |
+| `--id <id>` | `-i` | 自定义 Gecko 附加组件 ID，仅在源 manifest 未携带 ID 时生效。格式必须类似邮箱（仅 ASCII 字符），如 `my-ext@domain.com`；不传时由扩展名称经 SHA-256 确定性生成，同一扩展重复转换得到的 ID 保持不变。 |
 
 `--verbose` 的运行示例：
 

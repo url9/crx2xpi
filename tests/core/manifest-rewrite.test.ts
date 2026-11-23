@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { WebExtensionManifest } from '../../src/parsers/manifest-parser.js';
 import {
+  generateDeterministicGeckoId,
   injectGeckoId,
+  InvalidGeckoIdError,
+  isValidGeckoId,
   normalizeContentSecurityPolicy,
   removeChromeOnlyFields,
   renameBrowserAction,
   rewriteManifestForGecko,
-  sanitizeExtensionIdLocalPart,
   sanitizeWebAccessibleResources,
   splitHostPermissions,
 } from '../../src/core/manifest-rewrite.js';
@@ -20,31 +22,54 @@ function mv3(): WebExtensionManifest {
   return { manifest_version: 3, name: 'Demo', version: '1.0.0' };
 }
 
-describe('sanitizeExtensionIdLocalPart', () => {
-  it('lowercases and collapses illegal characters into hyphens', () => {
-    expect(sanitizeExtensionIdLocalPart('My Cool.Extension')).toBe('my-cool.extension');
+describe('generateDeterministicGeckoId', () => {
+  it('hashes the same name to the same id', () => {
+    expect(generateDeterministicGeckoId('Demo')).toBe('8a2cc0673b1c@crx2xpi.local');
+    expect(generateDeterministicGeckoId('Demo')).toBe(generateDeterministicGeckoId('Demo'));
   });
 
-  it('trims leading and trailing separators', () => {
-    expect(sanitizeExtensionIdLocalPart('-Test_')).toBe('test_');
+  it('hashes different names to different ids', () => {
+    expect(generateDeterministicGeckoId('Demo')).not.toBe(generateDeterministicGeckoId('Other'));
   });
 
-  it('falls back to a stable hash for an all-non-ASCII name', () => {
-    const a = sanitizeExtensionIdLocalPart('暗色阅读器');
-    const b = sanitizeExtensionIdLocalPart('暗色阅读器');
-    expect(a).toBe(b);
-    expect(a).toMatch(/^ext-[0-9a-f]+$/);
-    expect(sanitizeExtensionIdLocalPart('别的名字')).not.toBe(a);
+  it('is case-sensitive on the seed name', () => {
+    expect(generateDeterministicGeckoId('Demo')).not.toBe(generateDeterministicGeckoId('demo'));
+  });
+
+  it('falls back to the unknown-extension sentinel for an empty name', () => {
+    expect(generateDeterministicGeckoId('')).toBe('83be8a3883b4@crx2xpi.local');
+  });
+
+  it('always emits a valid id even for a non-ASCII name', () => {
+    const id = generateDeterministicGeckoId('悦览');
+    expect(isValidGeckoId(id)).toBe(true);
+    expect(id).toBe('a5ce27ffeb77@crx2xpi.local');
+  });
+});
+
+describe('isValidGeckoId', () => {
+  it('accepts email-shaped ASCII ids', () => {
+    expect(isValidGeckoId('my-ext@domain.com')).toBe(true);
+    expect(isValidGeckoId('8a2cc0673b1c@crx2xpi.local')).toBe(true);
+    expect(isValidGeckoId('a.b-c_d@sub.domain.org')).toBe(true);
+  });
+
+  it('rejects non-ASCII, whitespace and malformed ids', () => {
+    expect(isValidGeckoId('悦览@local')).toBe(false);
+    expect(isValidGeckoId('my ext@domain.com')).toBe(false);
+    expect(isValidGeckoId('no-at-sign.com')).toBe(false);
+    expect(isValidGeckoId('no-dot@domain')).toBe(false);
+    expect(isValidGeckoId('')).toBe(false);
   });
 });
 
 describe('injectGeckoId', () => {
-  it('adds an email-style id derived from the name', () => {
+  it('adds a deterministic id hashed from the name', () => {
     const result = injectGeckoId(mv3());
     const settings = result.browser_specific_settings as {
       gecko: { id: string };
     };
-    expect(settings.gecko.id).toBe('demo@crx2xpi.local');
+    expect(settings.gecko.id).toBe('8a2cc0673b1c@crx2xpi.local');
   });
 
   it('never overwrites an existing non-empty id', () => {
@@ -66,8 +91,46 @@ describe('injectGeckoId', () => {
     };
     const result = injectGeckoId(manifest);
     expect(result.browser_specific_settings).toEqual({
-      gecko: { strict_min_version: '121.0', id: 'demo@crx2xpi.local' },
+      gecko: { strict_min_version: '121.0', id: '8a2cc0673b1c@crx2xpi.local' },
     });
+  });
+
+  it('applies a valid customGeckoId when the manifest has none', () => {
+    const result = injectGeckoId(mv3(), 'my-ext@domain.com');
+    const settings = result.browser_specific_settings as {
+      gecko: { id: string };
+    };
+    expect(settings.gecko.id).toBe('my-ext@domain.com');
+  });
+
+  it('prefers the existing manifest id over customGeckoId', () => {
+    // An existing id is the extension's own identity; an explicit override
+    // would break id-scoped updates, so the manifest id always wins.
+    const manifest: WebExtensionManifest = {
+      ...mv3(),
+      browser_specific_settings: { gecko: { id: 'keep-me@example.com' } },
+    };
+    const result = injectGeckoId(manifest, 'custom@domain.com');
+    expect(result).toBe(manifest);
+  });
+
+  it('throws InvalidGeckoIdError with the canonical message for a malformed customGeckoId', () => {
+    expect(() => injectGeckoId(mv3(), '悦览@local')).toThrowError(
+      'Invalid Gecko ID format: "悦览@local". It must look like an email address ' +
+        '(e.g., name@domain.com) and contain only ASCII characters.'
+    );
+    expect(() => injectGeckoId(mv3(), 'my ext@domain.com')).toThrowError(InvalidGeckoIdError);
+  });
+
+  it('hashes the unknown-extension sentinel when the manifest has no name', () => {
+    // `name` is schema-required, so a nameless manifest can only reach this
+    // path via a hand-cast fixture; the rewrite must still survive it.
+    const nameless = { manifest_version: 3, version: '1.0.0' } as WebExtensionManifest;
+    const result = injectGeckoId(nameless);
+    const settings = result.browser_specific_settings as {
+      gecko: { id: string };
+    };
+    expect(settings.gecko.id).toBe('83be8a3883b4@crx2xpi.local');
   });
 });
 
@@ -240,8 +303,19 @@ describe('rewriteManifestForGecko', () => {
     expect(result.content_security_policy).toEqual({ extension_pages: "script-src 'self'" });
     expect(result.web_accessible_resources).toEqual([{ resources: ['a.png'] }]);
     expect((result.browser_specific_settings as { gecko: { id: string } }).gecko.id).toBe(
-      'demo@crx2xpi.local'
+      '8a2cc0673b1c@crx2xpi.local'
     );
+  });
+
+  it('passes customGeckoId through to the id injection rule', () => {
+    const result = rewriteManifestForGecko(mv3(), 'my-ext@domain.com');
+    expect((result.browser_specific_settings as { gecko: { id: string } }).gecko.id).toBe(
+      'my-ext@domain.com'
+    );
+  });
+
+  it('rejects a malformed customGeckoId', () => {
+    expect(() => rewriteManifestForGecko(mv3(), '悦览@local')).toThrowError(InvalidGeckoIdError);
   });
 
   it('is idempotent: re-running the chain changes nothing', () => {

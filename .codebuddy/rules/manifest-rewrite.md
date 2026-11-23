@@ -27,9 +27,11 @@ point.
 `rewriteManifestForGecko` applies these idempotent rules to EVERY converted
 manifest (MV2 and MV3):
 
-- Inject a stable `browser_specific_settings.gecko.id` derived from `name`
-  (email-style, sanitised to `[a-z0-9._-]`; non-ASCII names fall back to a
-  stable hash). Never overwrite an existing id.
+- Inject a stable `browser_specific_settings.gecko.id`: SHA-256 of the display
+  name (first 12 hex chars, empty name falls back to `unknown-extension`) as
+  `<hash>@crx2xpi.local`. Deterministic across re-conversions; a caller-supplied
+  validated id (`options.customGeckoId`) is used when the manifest has none.
+  Never overwrite an existing id.
 - Remove Chrome-only keys: `key`, `update_url`, `minimum_chrome_version`,
   `oauth2`, `export`.
 - Rename an MV3 `browser_action` to `action` without clobbering an existing
