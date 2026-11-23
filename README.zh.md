@@ -2,13 +2,22 @@
 
 [English](README.md) | 中文
 
-[![npm](https://img.shields.io/npm/v/crx2xpi?style=for-the-badge&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/crx2xpi) [![CI](https://img.shields.io/badge/CI-passing-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/url9/crx2xpi/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-Apache--2.0-2f7cf6?style=for-the-badge)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?style=for-the-badge&logo=node.js&logoColor=white)](./package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](./tsconfig.json)
+[![npm](https://img.shields.io/npm/v/crx2xpi?style=for-the-badge&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/crx2xpi) [![CI](https://img.shields.io/badge/CI-passing-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/url9/crx2xpi/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-Apache--2.0-6E7F9C?style=for-the-badge)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?style=for-the-badge&logo=node.js&logoColor=white)](./package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](./tsconfig.json)
 
 > 将 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。
 
-`crx2xpi` 是一座连接 Chromium WebExtension 运行时与 Gecko 的社区维护桥梁：把 Chrome MV3 扩展（CRX3）转换为 Firefox / GeckoView 可用的 XPI 附加组件。它会剥离 CRX3 签名头、重写适配 Gecko 的 manifest 字段（MV3 `service_worker` 降级、稳定的 Gecko 附加组件 ID、权限/WAR/CSP 规范化，以及移除 Chrome 专有键）、注入 `webextension-polyfill` 和 `chrome` 别名 shim，并可生成静态兼容性报告，最后打包为可直接签名的 XPI。
+## 它能做什么
 
-> **状态：** 转换引擎和 CLI 已端到端可用。CRX3 解包、MV3 `service_worker` 降级、Gecko manifest 重写、chrome 别名 shim、polyfill 注入、兼容性诊断和 XPI 重打包均已实现，并有单元测试、集成测试（真实 CRX3 样本）和 CLI 测试覆盖。6 个转换后的扩展还经过真实 Firefox 功能验证，诊断目录在 10 个真实样本上零误报。诊断目录与真实运行结果逐条对账——检测面由真实漏报案例驱动扩展，其中包括一个能安装、报告全绿却实际不可用的扩展；详见[真实浏览器验证语料](./docs/verified-compat-findings.md)。欢迎通过 [CONTRIBUTING.md](./CONTRIBUTING.zh.md) 参与改进。
+`crx2xpi` 是一座连接 Chromium WebExtension 运行时与 Gecko 的社区维护桥梁。它会剥离 CRX3 签名头、重写适配 Gecko 的 manifest 字段（MV3 `service_worker` 降级、权限/WAR/CSP 规范化、移除 Chrome 专有键，以及稳定的附加组件 ID——见「如何安装生成的 XPI」一节）、注入兼容性 shim、可选生成静态兼容性报告，最后打包为可直接签名的 XPI。
+
+引擎与 CLI 已端到端可用：CRX3 解包、manifest 重写、shim 注入、兼容性诊断和 XPI 重打包均有单元测试、集成测试（真实 CRX3 样本）和 CLI 测试覆盖。6 个转换后的扩展经过真实 Firefox 功能验证；诊断目录在 10 个真实样本上零误报。检测面由真实漏报案例驱动扩展，其中包括一个能安装、报告全绿却实际不可用的扩展；详见[真实浏览器验证语料](./docs/verified-compat-findings.md)。
+
+每个打包出的 XPI 都携带两个兼容性资产，且始终在 `background.scripts` 中最先求值：
+
+1. `chrome-promise-shim.js` —— Firefox 的 `chrome` 命名空间只支持回调风格，而 Chrome MV3 源码使用 `await chrome.*` 的 Promise 风格。该 shim 在 Firefox 上把 `chrome` 别名到支持 Promise 的 `browser` 命名空间，无需改动原扩展代码即可恢复 Chromium 的调用语义。没有它，转换后的扩展能加载、无报错，但所有 Promise 风格的 API 调用会静默返回 `undefined`。
+2. [`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)（MPL-2.0，见 [NOTICE](./NOTICE)）—— Mozilla 官方 polyfill，供引用 `browser.*` Promise API 的代码使用；在原生已有 `browser` 的环境下是空操作。
+
+上述行为已通过端到端实测验证：开源扩展 CookieMop 经 `crx2xpi` 转换后，在 Firefox 中关闭标签页时会真实删除对应 Cookie（包括 HttpOnly Cookie），而这依赖 Promise shim 的存在。
 
 ## CLI 使用说明
 
@@ -59,19 +68,13 @@ node dist/cli.js --verbose sample.crx out/sample.xpi
 | `--verbose` | `-v` | 打印详细进度：头校验、manifest 解析、重写、重打包。 |
 | `--keep-temp` | `-k` | 保留解压后的载荷目录以便调试；成功时会打印其路径。 |
 | `--report <path>` | `-r` | 写出静态兼容性 Markdown 报告，列出需要人工复核的 Chrome 专有 API 用法与 `importScripts()` 调用。 |
-| `--id <id>` | `-i` | 自定义 Gecko 附加组件 ID，仅在源 manifest 未携带 ID 时生效。格式必须类似邮箱（仅 ASCII 字符），如 `my-ext@domain.com`；不传时由扩展名称经 SHA-256 确定性生成，同一扩展重复转换得到的 ID 保持不变。 |
+| `--id <id>` | `-i` | 源 manifest 未携带 ID 时使用的自定义 Gecko ID（邮箱形式，仅 ASCII 字符，如 `my-ext@domain.com`）；详见「如何安装生成的 XPI」一节。 |
 
 `--verbose` 的运行示例：
 
 ![crx2xpi CLI 在终端中转换 CRX3 样本](./docs/cli-screenshot.png)
 
 CLI 成功时退出码为 `0`，用法或转换错误时为 `1`。
-内置兼容资产：打包的 XPI 携带两个条目，始终在 `background.scripts` 中最先求值：
-
-1. `chrome-promise-shim.js` —— Firefox 的 `chrome` 命名空间只支持回调风格，而 Chrome MV3 源码使用 `await chrome.*` 的 Promise 风格。该 shim 在 Firefox 上把 `chrome` 别名到支持 Promise 的 `browser` 命名空间，无需改动原扩展代码即可恢复 Chromium 的调用语义。没有它，转换后的扩展能加载、无报错，但所有 Promise 风格的 API 调用会静默返回 `undefined`。
-2. [`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)（MPL-2.0，见 [NOTICE](./NOTICE)）—— Mozilla 官方 polyfill，供引用 `browser.*` Promise API 的代码使用；在原生已有 `browser` 的环境下是空操作。
-
-上述行为已通过端到端实测验证：开源扩展 CookieMop 经 `crx2xpi` 转换后，在 Firefox 中关闭标签页时会真实删除对应 Cookie（包括 HttpOnly Cookie），而这依赖 Promise shim 的存在。
 
 ## 面向 Gecko 的 manifest 重写
 
@@ -79,7 +82,7 @@ CLI 成功时退出码为 `0`，用法或转换错误时为 `1`。
 
 | 重写 | 原因 |
 | --- | --- |
-| 稳定的 `browser_specific_settings.gecko.id` | 没有固定 ID，侧载的附加组件每次加载都会得到新的随机 ID，静默破坏按 ID 隔离的存储与设置。已有 ID 绝不覆盖。 |
+| 稳定的 `browser_specific_settings.gecko.id` | 没有固定 ID，侧载的附加组件每次加载都会得到新的随机 ID，破坏按 ID 隔离的存储与设置。已有 ID 绝不覆盖；详见「如何安装生成的 XPI」一节。 |
 | 将 host 匹配模式从 `permissions` 移入 `host_permissions` | Firefox MV3 会把 `permissions` 中的 host 模式当作未知的 API 权限，从而拒绝该主机的访问。 |
 | 移除 Chrome 专有键（`key`、`update_url`、`minimum_chrome_version`、`oauth2`、`export`） | 其中 `update_url` 会让某些 Firefox 构建尝试从 Chrome 网上应用店更新。 |
 | MV3 的 `browser_action` 重命名为 `action` | `action` 是标准的 MV3 键。 |
@@ -98,7 +101,7 @@ CLI 成功时退出码为 `0`，用法或转换错误时为 `1`。
 
 > 在桌面端 Release 和 Beta 中，未经 Mozilla 签名的扩展无法安装。而在 Android 上，「从文件安装」菜单接受未签名的包，因此只有在官方分发或桌面 Release 上安装时才必须进行 AMO 签名。请根据使用场景选择以下方式：
 >
-> **扩展 ID**：除 `about:debugging` 临时载入外，所有安装方式（Android 从文件安装、AMO 签名）都要求 XPI 的 `manifest.json` 中包含扩展 ID（`browser_specific_settings.gecko.id`）。当源扩展未声明时，`crx2xpi` 会自动生成稳定且合法的 email 形式 ID（例如 `my-extension@crx2xpi.local`），且绝不覆盖已有 ID。若提交 AMO，你仍可在签名前将其替换为自己选定的 ID。
+> **扩展 ID**：除 `about:debugging` 临时载入外，所有安装方式（Android 从文件安装、AMO 签名）都要求 XPI 的 `manifest.json` 中包含扩展 ID（`browser_specific_settings.gecko.id`）。没有固定 ID 时，侧载的附加组件每次加载都会得到新的随机 ID，静默破坏按 ID 隔离的存储与设置。`crx2xpi` 绝不覆盖源 manifest 已有的 ID；若未声明，则由扩展名称经 SHA-256 哈希生成稳定的 email 形式 ID（例如 `my-extension@crx2xpi.local`），同一扩展重复转换结果不变。可用 `--id` 指定自己的 ID，或在提交 AMO 签名前替换掉生成的 ID。
 
 ### 场景一：桌面端测试（Firefox Developer Edition / Nightly / ESR）
 
@@ -148,26 +151,6 @@ AMO 签名是在 Release 与 Beta 上永久安装的唯一官方途径。对于�
 
 ---
 
-## 许可证
-
-Apache-2.0 — 见 [LICENSE](./LICENSE) 和 [NOTICE](./NOTICE)。
-
-## 前置要求
-
-- Node.js **>= 20**
-- pnpm **>= 9**（`corepack enable && corepack prepare pnpm@9 --activate`）
-
-## 快速开始
-
-```bash
-pnpm install
-pnpm test          # 单元测试（Vitest）
-pnpm lint          # ESLint 静态检查
-pnpm typecheck     # TypeScript 严格类型检查
-pnpm format:check  # Prettier 格式检查
-pnpm build         # 编译到 dist/
-```
-
 ## 测试样本
 
 自动化集成测试仅使用一个自造的 MV3 样本 `tests/fixtures/sample-mv3 (crx2xpi).crx`，这也是本仓库中唯一入库的扩展二进制文件。若需针对更贴近真实生产形态的扩展做手动测试，请从以下官方渠道自行获取 CRX——本仓库不重新分发这些第三方二进制文件。
@@ -189,7 +172,7 @@ Chrome 商店地址同时也是 CRX 下载来源：打开商店页面即可，�
 npx crx2xpi downloaded.crx downloaded.xpi
 ```
 
-商店 ID 可方便地作为上文安装章节所述 Firefox 扩展 ID（`browser_specific_settings.gecko.id`）的基础。“没有 Firefox 版本”指没有官方 Mozilla Add-ons 条目；不排除第三方手工转换包或同名无关扩展。这些扩展均归各自开发者所有，`crx2xpi` 与其无关联，以上链接仅供测试使用。
+商店 ID 可方便地作为自定义 Gecko ID 的基础（见「如何安装生成的 XPI」一节）。“没有 Firefox 版本”指没有官方 Mozilla Add-ons 条目；不排除第三方手工转换包或同名无关扩展。这些扩展均归各自开发者所有，`crx2xpi` 与其无关联，以上链接仅供测试使用。
 
 ### 实际效果
 
@@ -202,35 +185,10 @@ npx crx2xpi downloaded.crx downloaded.xpi
 
 <p align="center"><sub>转换前：Chrome 中的原始 Dark Reader MV3 CRX　·　转换后：Firefox 中的 crx2xpi 转换版 XPI</sub></p>
 
-## 提交规范（Conventional Commits）
+## 参与贡献
 
-每笔提交都由 Husky 的 `commit-msg` 钩子通过 `commitlint` 校验。
-允许的前缀：`feat:`、`fix:`、`docs:`、`refactor:`、`test:`、`chore:`、
-`build:`、`ci:`、`perf:`、`style:`、`revert:`。
+前置要求、开发流程、提交规范、项目规则和行为准则见 [CONTRIBUTING.zh.md](./CONTRIBUTING.zh.md)。欢迎贡献代码与报告问题。
 
-```text
-feat: implement CRX3 header parsing
-fix: preserve background scripts when service_worker is absent
-docs: document the manifest rewrite pipeline
-```
+## 许可证
 
-你可以手写提交信息，也可以使用交互式 Commitizen 提示，它会引导你选择类型、作用域和主题：
-
-```bash
-pnpm commit       # `cz` 的别名
-```
-
-Commitizen 在 `package.json` 的 `config.commitizen` 中配置，使用 `cz-conventional-changelog` 适配器，因此生成的信息会自动满足 commitlint。
-
-仓库最初的 `Initial commit` 保持原样；其后的所有提交均遵循上述规范。
-
-## 项目规则
-
-面向 AI 助手和贡献者的工程、文档与审查规则位于
-[`.codebuddy/rules`](./.codebuddy/rules) 和
-[`.codebuddy/CODEBUDDY.md`](./.codebuddy/CODEBUDDY.md)。这些规则涵盖 JSDoc
-要求、注释哲学、CRX3 魔数字节布局、`service_worker` 降级原理和 polyfill 注入顺序。
-
-## 行为准则
-
-参与本项目即表示遵守 [Contributor Covenant](./CODE_OF_CONDUCT.md)。
+Apache-2.0 — 见 [LICENSE](./LICENSE) 和 [NOTICE](./NOTICE)。

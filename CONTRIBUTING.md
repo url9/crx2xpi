@@ -77,6 +77,17 @@ footer. Commit messages are enforced by `commitlint` via a Husky `commit-msg`
 hook, so a malformed message will be rejected locally. You may also run
 `pnpm commit` to use Commitizen's interactive prompt.
 
+## Project rules
+
+Engineering, documentation, and review rules for AI assistants and contributors
+live in [`.codebuddy/CODEBUDDY.md`](./.codebuddy/CODEBUDDY.md) and
+[`.codebuddy/rules`](./.codebuddy/rules). They cover JSDoc requirements,
+comment philosophy, the CRX3 magic-byte layout, the `service_worker` downgrade
+rationale, and polyfill injection order.
+
+The repository's original `Initial commit` is immutable: never amend, rebase,
+squash, or reset it away. All new work adds commits on top.
+
 ## Code style
 
 - TypeScript `strict` mode is mandatory; **do not abuse `any`**. Prefer `unknown`

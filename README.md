@@ -2,31 +2,46 @@
 
 English | [中文](README.zh.md)
 
-[![npm](https://img.shields.io/npm/v/crx2xpi?style=for-the-badge&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/crx2xpi) [![CI](https://img.shields.io/badge/CI-passing-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/url9/crx2xpi/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-Apache--2.0-2f7cf6?style=for-the-badge)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?style=for-the-badge&logo=node.js&logoColor=white)](./package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](./tsconfig.json)
+[![npm](https://img.shields.io/npm/v/crx2xpi?style=for-the-badge&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/crx2xpi) [![CI](https://img.shields.io/badge/CI-passing-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/url9/crx2xpi/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-Apache--2.0-6E7F9C?style=for-the-badge)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?style=for-the-badge&logo=node.js&logoColor=white)](./package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](./tsconfig.json)
 
 > Convert Chrome MV3 extensions (CRX3) into Firefox / GeckoView-compatible XPI add-ons.
 
-`crx2xpi` is a community-maintained bridge between the Chromium WebExtension
-runtime and Gecko: it turns Chrome MV3 extensions (CRX3) into
-Firefox / GeckoView-compatible XPI add-ons. It strips the CRX3 signing
-header, rewrites manifest fields for Gecko (the MV3 `service_worker` downgrade,
-a stable Gecko add-on id, permission/WAR/CSP normalisation, and removal of
-Chrome-only keys), injects the `webextension-polyfill` and a `chrome` alias
-shim, and can emit a static compatibility report — all before packaging a
-signed-ready XPI.
+## What it does
 
-> **Status:** the conversion engine and CLI are working end to end. CRX3
-> unpacking, the MV3 `service_worker` downgrade, Gecko manifest rewrites, the
-> chrome alias shim, polyfill injection, compatibility diagnostics, and XPI
-> repacking are implemented and covered by unit, integration (real CRX3
-> sample), and CLI tests. Six converted extensions have also been verified
-> functionally in a real Firefox browser, and the diagnostic catalogue was
-> checked against ten real-world samples (zero false-positive warnings).
-> The catalogue is reconciled against real runtime outcomes — detection coverage
-> was expanded from genuine false-negative cases, including a real add-on that
-> installed and reported clean but could not be used;
-> see [verified compatibility findings](./docs/verified-compat-findings.md).
-> See [CONTRIBUTING.md](./CONTRIBUTING.md) to help improve it.
+`crx2xpi` is a community-maintained bridge between the Chromium WebExtension
+runtime and Gecko. It strips the CRX3 signing header, rewrites manifest fields
+for Gecko (the MV3 `service_worker` downgrade, permission/WAR/CSP normalisation,
+removal of Chrome-only keys, and a stable add-on id — see
+[Install the generated XPI](#install-the-generated-xpi)), injects compatibility
+shims, optionally emits a static compatibility report, and packages a
+signing-ready XPI.
+
+The engine and CLI work end to end: CRX3 unpacking, manifest rewrites, shim
+injection, compatibility diagnostics, and XPI repacking are covered by unit,
+integration (real CRX3 sample), and CLI tests. Six converted extensions have
+been verified functionally in a real Firefox browser, and the diagnostic
+catalogue was checked against ten real-world samples with zero false positives.
+Detection coverage was expanded from genuine false negatives, including a
+real add-on that installed and reported clean but could not be used —
+see [verified compatibility findings](./docs/verified-compat-findings.md).
+
+Every packaged XPI ships two compatibility assets, always evaluated first in
+`background.scripts`:
+
+1. `chrome-promise-shim.js` — Firefox keeps the `chrome` namespace
+   callback-only, while Chrome MV3 code calls `await chrome.*`. On Firefox the
+   shim aliases `chrome` to the promise-capable `browser` namespace, restoring
+   Chromium calling semantics without touching the original extension code.
+   Without it, converted extensions load and report no errors but their
+   promise-style API calls silently resolve to `undefined`.
+2. [`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)
+   (MPL-2.0, see [NOTICE](./NOTICE)) — Mozilla's official polyfill for code
+   that references the promise-based `browser.*` API; a no-op where `browser`
+   already exists natively.
+
+This was verified end-to-end: the open-source CookieMop extension, converted
+by `crx2xpi`, deletes its cookies for real when a tab closes in Firefox
+(including HttpOnly cookies), which requires the promise shim to be in place.
 
 ## CLI usage
 
@@ -77,31 +92,13 @@ Options:
 | `--verbose` | `-v` | Print detailed progress: header validation, manifest parsing, rewrites, repacking. |
 | `--keep-temp` | `-k` | Keep the extracted payload directory for debugging; its path is printed on success. |
 | `--report <path>` | `-r` | Write a static compatibility Markdown report listing Chrome-only API usage and `importScripts()` calls that need manual review. |
-| `--id <id>` | `-i` | Custom Gecko add-on ID used when the source manifest has none. Must look like an email address (ASCII only), e.g. `my-ext@domain.com`; when omitted, a deterministic ID is hashed from the extension name, so re-converting the same extension keeps the same ID. |
+| `--id <id>` | `-i` | Custom Gecko add-on ID when the source manifest has none (email form, ASCII only, e.g. `my-ext@domain.com`); see [Install the generated XPI](#install-the-generated-xpi). |
 
 Example session with `--verbose`:
 
 ![crx2xpi CLI converting a CRX3 sample in a terminal](./docs/cli-screenshot.png)
 
 The CLI exits with code `0` on success and `1` on usage or conversion errors.
-Bundled compatibility assets: the packaged XPI ships two entries that are
-always evaluated first in `background.scripts`:
-
-1. `chrome-promise-shim.js` — Firefox keeps the `chrome` namespace
-   callback-only, while Chrome MV3 code calls `await chrome.*`. On Firefox the
-   shim aliases `chrome` to the promise-capable `browser` namespace, restoring
-   Chromium calling semantics without touching the original extension code.
-   Without it, converted extensions load and report no errors but their
-   promise-style API calls silently resolve to `undefined`.
-2. [`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill)
-   (MPL-2.0, see [NOTICE](./NOTICE)) — Mozilla's official polyfill for code
-   that references the promise-based `browser.*` API; a no-op where `browser`
-   already exists natively.
-
-This behavior was verified end-to-end: the open-source CookieMop extension,
-converted by `crx2xpi`, deletes its cookies for real when a tab closes in
-Firefox (including HttpOnly cookies), which requires the promise shim to be in
-place.
 
 ## Manifest rewrites for Gecko
 
@@ -110,7 +107,7 @@ of manifest rewrites that close well-understood Chrome/Gecko gaps:
 
 | Rewrite | Why |
 | --- | --- |
-| Stable `browser_specific_settings.gecko.id` | Without a fixed id a side-loaded add-on gets a new random id on every load, silently breaking id-scoped storage and settings. An existing id is never overwritten. |
+| Stable `browser_specific_settings.gecko.id` | A side-loaded add-on without a fixed id gets a new random id on every load, breaking id-scoped storage and settings. An existing id is never overwritten; see [Install the generated XPI](#install-the-generated-xpi). |
 | Host patterns moved from `permissions` to `host_permissions` | Firefox MV3 treats host patterns in `permissions` as unknown API permissions and denies the host access. |
 | Chrome-only keys removed (`key`, `update_url`, `minimum_chrome_version`, `oauth2`, `export`) | `update_url` in particular can make some Firefox builds attempt a Chrome Web Store update. |
 | MV3 `browser_action` renamed to `action` | `action` is the standard MV3 key. |
@@ -135,7 +132,7 @@ The report never rewrites source code or injects shims, and it explicitly notes
 that static analysis cannot prove runtime correctness — always validate the
 converted XPI in a real Firefox browser.
 
-## How to install the generated XPI (Installation)
+## Install the generated XPI
 
 > On desktop Release and Beta, extensions not signed by Mozilla cannot be
 > installed. On Android, the "install from file" menu accepts unsigned
@@ -146,11 +143,13 @@ converted XPI in a real Firefox browser.
 > **Extension ID**: except for `about:debugging` temporary loading, every
 > installation method (Android install-from-file, AMO signing) requires an
 > extension ID in the XPI's `manifest.json`
-> (`browser_specific_settings.gecko.id`). `crx2xpi` generates a stable, valid
-> email-style id automatically (for example `my-extension@crx2xpi.local`) when
-> the source does not declare one, and never overwrites an id that is already
-> present. For AMO submission you may still want to replace it with your own
-> chosen id before signing.
+> (`browser_specific_settings.gecko.id`). Without a fixed id, a side-loaded
+> add-on gets a new random id on each load, silently breaking id-scoped storage
+> and settings. `crx2xpi` never overwrites an id from the source manifest; when
+> there is none, it generates a stable email-style id hashed from the extension
+> name (for example `my-extension@crx2xpi.local`), which stays the same when the
+> same extension is converted again. Use `--id` to choose your own, or replace
+> the generated id before signing for AMO submission.
 
 ### Scenario 1: Desktop testing (Firefox Developer Edition / Nightly / ESR)
 
@@ -225,26 +224,6 @@ converted packages directly.
 
 ---
 
-## License
-
-Apache-2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
-
-## Prerequisites
-
-- Node.js **>= 20**
-- pnpm **>= 9** (`corepack enable && corepack prepare pnpm@9 --activate`)
-
-## Getting started
-
-```bash
-pnpm install
-pnpm test          # unit tests (Vitest)
-pnpm lint          # ESLint static analysis
-pnpm typecheck     # TypeScript strict check
-pnpm format:check  # Prettier formatting check
-pnpm build         # compile to dist/
-```
-
 ## Test samples
 
 The automated integration suite ships one self-generated MV3 fixture,
@@ -277,9 +256,9 @@ Then convert it like any other:
 npx crx2xpi downloaded.crx downloaded.xpi
 ```
 
-The Store ID can serve as a convenient base for the Firefox extension ID
-(`browser_specific_settings.gecko.id`) discussed in the installation section
-above. "No Firefox version" means there is no official Mozilla Add-ons entry;
+The Store ID can serve as a convenient base when choosing your own Gecko ID
+(see [Install the generated XPI](#install-the-generated-xpi)). "No Firefox
+version" means there is no official Mozilla Add-ons entry;
 third-party conversions or unrelated same-name add-ons may still exist. These
 extensions belong to their respective developers; `crx2xpi` is not affiliated
 with them, and these links are provided for testing only.
@@ -304,40 +283,12 @@ unmodified source.
 
 <p align="center"><sub>Before: original Dark Reader MV3 CRX in Chrome · After: crx2xpi-converted XPI in Firefox</sub></p>
 
-## Commit convention (Conventional Commits)
+## Contributing
 
-Every commit is validated by `commitlint` through a Husky `commit-msg` hook.
-Allowed prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`,
-`build:`, `ci:`, `perf:`, `style:`, `revert:`.
+Prerequisites, development workflow, commit convention, project rules, and the
+Code of Conduct live in [CONTRIBUTING.md](./CONTRIBUTING.md). Contributions and
+bug reports are welcome.
 
-```text
-feat: implement CRX3 header parsing
-fix: preserve background scripts when service_worker is absent
-docs: document the manifest rewrite pipeline
-```
+## License
 
-You may write messages by hand or use the interactive Commitizen prompt, which
-walks you through selecting the type, scope, and subject:
-
-```bash
-pnpm commit       # alias for `cz`
-```
-
-Commitizen is configured in `package.json` under `config.commitizen` with the
-`cz-conventional-changelog` adapter, so the generated messages automatically
-satisfy commitlint.
-
-The repository's original `Initial commit` is preserved as-is; all subsequent
-commits follow the convention above.
-
-## Project rules
-
-Engineering, documentation, and review rules for AI assistants and contributors
-live in [`.codebuddy/rules`](./.codebuddy/rules) and
-[`.codebuddy/CODEBUDDY.md`](./.codebuddy/CODEBUDDY.md). These rules cover JSDoc
-requirements, comment philosophy, the CRX3 magic-byte layout, the
-`service_worker` downgrade rationale, and polyfill injection order.
-
-## Code of Conduct
-
-Participation is governed by the [Contributor Covenant](./CODE_OF_CONDUCT.md).
+Apache-2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).

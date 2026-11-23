@@ -68,6 +68,12 @@ test: cover service_worker downgrade edge cases
 
 破坏性变更在类型后加 `!`，或在页脚写 `BREAKING CHANGE:`。提交信息由 Husky 的 `commit-msg` 钩子通过 `commitlint` 强制校验，格式错误的信息会在本地被拒绝。你也可以运行 `pnpm commit` 使用 Commitizen 的交互式提示。
 
+## 项目规则
+
+面向 AI 助手和贡献者的工程、文档与审查规则位于 [`.codebuddy/CODEBUDDY.md`](./.codebuddy/CODEBUDDY.md) 和 [`.codebuddy/rules`](./.codebuddy/rules)，涵盖 JSDoc 要求、注释哲学、CRX3 魔数字节布局、`service_worker` 降级原理和 polyfill 注入顺序。
+
+仓库最初的 `Initial commit` 不可改动：禁止 amend、rebase、squash 或 reset 掉它，所有新工作都在其上追加提交。
+
 ## 代码风格
 
 - 必须使用 TypeScript `strict` 模式；**不要滥用 `any`**。优先使用 `unknown` 加类型收窄，或精确的接口/类型。`@typescript-eslint/no-explicit-any` 是错误级别。
