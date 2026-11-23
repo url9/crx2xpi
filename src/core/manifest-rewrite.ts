@@ -208,20 +208,23 @@ export function removeChromeOnlyFields(manifest: WebExtensionManifest): WebExten
 /**
  * Rename an MV3 `browser_action` to the standard `action` key.
  *
+ * When both keys are present the existing `action` wins and `browser_action`
+ * is still removed: Firefox rejects an MV3 manifest that carries the obsolete
+ * key, so leaving it in place would break an otherwise valid add-on.
+ *
  * @param manifest - Manifest to rewrite (not mutated).
- * @returns A copy using `action`, or the original when no rename was needed.
+ * @returns A copy using `action` with no `browser_action`, or the original when no rewrite was needed.
  */
 export function renameBrowserAction(manifest: WebExtensionManifest): WebExtensionManifest {
-  if (manifest.manifest_version !== 3) {
+  if (manifest.manifest_version !== 3 || manifest.browser_action === undefined) {
     return manifest;
   }
-  if (manifest.action !== undefined || manifest.browser_action === undefined) {
-    return manifest;
-  }
-  const action = manifest.browser_action;
   // Annotate explicitly: spreading an interface drops its index signature in
   // inference, which would make the `delete` below a type error.
-  const rewritten: WebExtensionManifest = { ...manifest, action };
+  const rewritten: WebExtensionManifest = { ...manifest };
+  if (rewritten.action === undefined) {
+    rewritten.action = manifest.browser_action;
+  }
   delete rewritten.browser_action;
   return rewritten;
 }

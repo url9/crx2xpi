@@ -168,13 +168,19 @@ describe('renameBrowserAction', () => {
     expect(result.browser_action).toBeUndefined();
   });
 
-  it('does not overwrite an existing action', () => {
+  it('keeps an existing action but still drops a coexisting browser_action', () => {
+    // Firefox rejects an MV3 manifest that still carries browser_action, so the
+    // obsolete key must go even when the developer already declared `action`.
     const manifest: WebExtensionManifest = {
       ...mv3(),
       action: { default_title: 'New' },
       browser_action: { default_title: 'Old' },
     };
-    expect(renameBrowserAction(manifest)).toBe(manifest);
+    const result = renameBrowserAction(manifest);
+    expect(result.action).toEqual({ default_title: 'New' });
+    expect(result.browser_action).toBeUndefined();
+    expect(result).not.toBe(manifest);
+    expect(manifest.browser_action).toEqual({ default_title: 'Old' });
   });
 
   it('leaves MV2 browser_action untouched', () => {

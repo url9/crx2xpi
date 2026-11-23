@@ -183,6 +183,51 @@ describe('analyzeSources', () => {
     expect(analyzeSources(sources)).toEqual([]);
   });
 
+  it('detects bracket string-literal member access', () => {
+    // Minified/generated bundles rewrite dot access into quoted brackets; the
+    // literal is still statically knowable and must be flagged.
+    const sources: DiagnosticSource[] = [
+      {
+        path: 'bg.js',
+        content: 'chrome["offscreen"].createDocument({}); browser[\'sidePanel\'].setOptions({});',
+      },
+    ];
+    expect(analyzeSources(sources).map((f) => f.code)).toEqual([
+      'chrome.offscreen',
+      'browser.sidePanel',
+    ]);
+  });
+
+  it('does not flag computed bracket access that cannot be resolved statically', () => {
+    // chrome[api] could be anything; guessing would create false positives.
+    const sources: DiagnosticSource[] = [
+      { path: 'bg.js', content: 'chrome[api].createDocument({});' },
+    ];
+    expect(analyzeSources(sources)).toEqual([]);
+  });
+
+  it('flags additional MDN-verified Chrome-only calls under both roots', () => {
+    const sources: DiagnosticSource[] = [
+      {
+        path: 'bg.js',
+        content: [
+          'chrome.extension.sendRequest({type:"x"});',
+          'browser.management.uninstall("id");',
+          'chrome.notifications.onButtonClicked.addListener(cb);',
+          'browser.downloads.acceptDanger(1);',
+          'chrome.dom.openOrClosedShadowRoot(node);',
+        ].join('\n'),
+      },
+    ];
+    expect(analyzeSources(sources).map((f) => f.code)).toEqual([
+      'chrome.extension.sendRequest',
+      'browser.management.uninstall',
+      'chrome.notifications.onButtonClicked',
+      'browser.downloads.acceptDanger',
+      'chrome.dom',
+    ]);
+  });
+
   it('flags importScripts as info', () => {
     const sources: DiagnosticSource[] = [{ path: 'a.js', content: 'importScripts("util.js");' }];
     const findings = analyzeSources(sources);

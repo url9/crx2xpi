@@ -160,6 +160,101 @@ const API_RULES: readonly ApiRule[] = [
     message: 'chrome.runtime.getPackageDirectoryEntry is Chrome-only.',
     suggestion: 'Avoid relying on direct package filesystem access.',
   },
+  // The rules below were reconciled against MDN Browser Compat Data
+  // (webextensions.api, 2026-11) at DEVELOPMENT time only — the data set is
+  // ~20 MB and is not a runtime dependency. Each entry is a method or event
+  // that Chrome implements and Firefox does not, so a literal call is always
+  // a real gap rather than a version-dependent nuance.
+  {
+    api: 'dom',
+    severity: 'warning',
+    message: 'chrome.dom has no Firefox equivalent.',
+    suggestion: 'Avoid DOM access from the extension API; use page scripts instead.',
+  },
+  {
+    api: 'extension.sendRequest',
+    severity: 'warning',
+    message: 'chrome.extension.sendRequest is a Chrome-only legacy messaging API.',
+    suggestion: 'Use runtime.sendMessage, which Firefox implements.',
+  },
+  {
+    api: 'extension.onRequest',
+    severity: 'warning',
+    message: 'chrome.extension.onRequest is a Chrome-only legacy event.',
+    suggestion: 'Use runtime.onMessage instead.',
+  },
+  {
+    api: 'extension.onRequestExternal',
+    severity: 'warning',
+    message: 'chrome.extension.onRequestExternal is a Chrome-only legacy event.',
+    suggestion: 'Use runtime.onMessageExternal instead.',
+  },
+  {
+    api: 'extension.getExtensionTabs',
+    severity: 'warning',
+    message: 'chrome.extension.getExtensionTabs is not implemented in Firefox.',
+    suggestion: 'Use runtime.getViews or tabs.query.',
+  },
+  {
+    api: 'tabs.sendRequest',
+    severity: 'warning',
+    message: 'chrome.tabs.sendRequest is a Chrome-only legacy messaging API.',
+    suggestion: 'Use tabs.sendMessage, which Firefox implements.',
+  },
+  {
+    api: 'management.uninstall',
+    severity: 'warning',
+    message: 'chrome.management.uninstall is not implemented in Firefox.',
+    suggestion: 'Remove the call or provide a Firefox-safe fallback.',
+  },
+  {
+    api: 'management.getPermissionWarningsById',
+    severity: 'warning',
+    message: 'chrome.management.getPermissionWarningsById is not implemented in Firefox.',
+    suggestion: 'Guard the call or drop the dependency on it.',
+  },
+  {
+    api: 'management.getPermissionWarningsByManifest',
+    severity: 'warning',
+    message: 'chrome.management.getPermissionWarningsByManifest is not implemented in Firefox.',
+    suggestion: 'Guard the call or drop the dependency on it.',
+  },
+  {
+    api: 'notifications.onButtonClicked',
+    severity: 'warning',
+    message: 'chrome.notifications.onButtonClicked is not implemented in Firefox.',
+    suggestion: 'Avoid notification buttons or guard the listener registration.',
+  },
+  {
+    api: 'notifications.update',
+    severity: 'warning',
+    message: 'chrome.notifications.update is not implemented in Firefox.',
+    suggestion: 'Create a new notification instead of updating an existing one.',
+  },
+  {
+    api: 'notifications.onClosed',
+    severity: 'info',
+    message: 'chrome.notifications.onClosed is not implemented in Firefox.',
+    suggestion: 'Do not rely on a close callback; verify notification behaviour.',
+  },
+  {
+    api: 'downloads.acceptDanger',
+    severity: 'warning',
+    message: 'chrome.downloads.acceptDanger is not implemented in Firefox.',
+    suggestion: 'Remove the call; Firefox downloads handle danger prompts differently.',
+  },
+  {
+    api: 'downloads.setShelfEnabled',
+    severity: 'warning',
+    message: 'chrome.downloads.setShelfEnabled is not implemented in Firefox.',
+    suggestion: 'Remove the call; the download shelf is a Chrome-only UI concept.',
+  },
+  {
+    api: 'events.Event',
+    severity: 'info',
+    message: 'chrome.events.Event rule APIs are not implemented in Firefox.',
+    suggestion: 'Review declarative WebRequest rule methods for a Firefox fallback.',
+  },
 ];
 
 /**
@@ -170,6 +265,35 @@ const API_RULES: readonly ApiRule[] = [
  */
 function matchApiRule(member: string): ApiRule | undefined {
   return API_RULES.find((rule) => member === rule.api || member.startsWith(`${rule.api}.`));
+}
+
+/** A `chrome.*` / `browser.*` API reference found on a source line. */
+interface ApiReference {
+  namespace: string;
+  member: string;
+}
+
+/**
+ * Collect API references from one line in both member-access notations.
+ *
+ * WHY bracket form: minified and generated bundles often rewrite
+ * `chrome.offscreen` into `chrome["offscreen"]`. The string literal is still
+ * statically knowable, so ignoring it silently missed real calls. Only a bare
+ * quoted literal is matched — computed access (`chrome[api]`) is deliberately
+ * skipped because resolving it statically would risk false positives.
+ *
+ * @param line - A single line of JavaScript source.
+ * @returns Namespace/member pairs in source order (duplicates allowed).
+ */
+function collectApiReferences(line: string): ApiReference[] {
+  const refs: ApiReference[] = [];
+  for (const match of line.matchAll(/\b(chrome|browser)\.([a-zA-Z_][\w.]*)/g)) {
+    refs.push({ namespace: match[1], member: match[2] });
+  }
+  for (const match of line.matchAll(/\b(chrome|browser)\[['"]([a-zA-Z_][\w.]*)['"]\]/g)) {
+    refs.push({ namespace: match[1], member: match[2] });
+  }
+  return refs;
 }
 
 /**
@@ -189,10 +313,8 @@ function matchApiRule(member: string): ApiRule | undefined {
 function scanLineForApis(line: string, file: string, lineNumber: number): DiagnosticFinding[] {
   const findings: DiagnosticFinding[] = [];
   const seen = new Set<string>();
-  const pattern = /\b(chrome|browser)\.([a-zA-Z_][\w.]*)/g;
-  for (const match of line.matchAll(pattern)) {
-    const namespace = match[1];
-    const rule = matchApiRule(match[2]);
+  for (const { namespace, member } of collectApiReferences(line)) {
+    const rule = matchApiRule(member);
     if (rule === undefined) {
       continue;
     }
