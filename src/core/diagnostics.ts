@@ -131,6 +131,30 @@ const API_RULES: readonly ApiRule[] = [
     suggestion: 'Remove the call; Firefox needs no storage access-level declaration.',
   },
   {
+    // Firefox lacks these three bookmark events (MDN compatibility data; bug
+    // 1319530 open since 2016). Verified at runtime: YueVision's background
+    // threw `TypeError: chrome.bookmarks.onChildrenReordered is undefined`
+    // at background.js:183 while `--report` showed zero findings — a literal
+    // `chrome.*` call the catalogue did not cover yet.
+    api: 'bookmarks.onChildrenReordered',
+    severity: 'warning',
+    message: 'bookmarks.onChildrenReordered is not implemented in Firefox.',
+    suggestion:
+      'Guard the call (typeof check or try/catch) or drop the listener; bookmark reorder sync cannot fire on Firefox.',
+  },
+  {
+    api: 'bookmarks.onImportBegan',
+    severity: 'warning',
+    message: 'bookmarks.onImportBegan is not implemented in Firefox.',
+    suggestion: 'Guard the call or drop the listener; Firefox never fires this event.',
+  },
+  {
+    api: 'bookmarks.onImportEnded',
+    severity: 'warning',
+    message: 'bookmarks.onImportEnded is not implemented in Firefox.',
+    suggestion: 'Guard the call or drop the listener; Firefox never fires this event.',
+  },
+  {
     api: 'runtime.getPackageDirectoryEntry',
     severity: 'warning',
     message: 'chrome.runtime.getPackageDirectoryEntry is Chrome-only.',

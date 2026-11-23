@@ -68,6 +68,22 @@ the current catalogue rules.
    positives on unrelated objects; that remains an inherent static-analysis
    limit on bundled payloads, not a catalogue gap.
 
+3. Firefox does not implement `bookmarks.onChildrenReordered`,
+   `bookmarks.onImportBegan`, or `bookmarks.onImportEnded` (MDN compatibility
+   data; bug 1319530 open since 2016). Verified with YueVision 1.0.0: its
+   background calls `chrome.bookmarks.onChildrenReordered.addListener(...)`
+   as a literal `chrome.*` call, and Firefox ESR 153 threw
+   `TypeError: can't access property "addListener", chrome.bookmarks
+   .onChildrenReordered is undefined` at `background.js:183` while
+   `--report` showed **zero findings** — a literal, un-minified call the
+   catalogue simply did not cover. Impact stayed contained because the call
+   sits on the last line of `init()`: menu creation, background services and
+   the four supported bookmark listeners had already run, so only
+   reorder-event sync is dead. **Fixed:** the three event names are now
+   catalogue rules at `warning` under both roots; supported members of the
+   `bookmarks` namespace (`create`, `onCreated`, `onMoved`, `onChanged`, ...)
+   remain unflagged.
+
 ## Catalogue accuracy observed on this corpus
 
 - True positives: `chrome.sidePanel` (1 hit), `chrome.offscreen` (2 hits),
@@ -89,6 +105,7 @@ the current catalogue rules.
 | --- | --- | --- | --- |
 | StayFocusd 4.6.25 | MV3 `service_worker` downgrade; shim + polyfill prepended; shim injected into 2 extension pages | auto id `__msg_extname__@crx2xpi.local`, active, not disabled | 0 findings before the fix — false negative that drove the `browser.*` detection expansion (gaps 1 & 2) |
 | Tabliss 2.6.0 | MV3 new-tab-only, no downgrade needed; Gecko id rewrite only | auto id `tabliss-a-beautiful-new-tab@crx2xpi.local`, active, not disabled | 0 findings — accurate; no Chrome-only API used |
+| YueVision 1.0.0 | MV3 `service_worker` downgrade; shim + polyfill prepended; shim injected into `popup.html`; auto id `ext-666973@crx2xpi.local` | installed and active, not disabled; background threw on `bookmarks.onChildrenReordered` (gap 3) | 0 findings before the fix — false negative that drove the bookmark-event rules |
 
 Both add-ons were installed with `AddonManager.addInstall` via Marionette in an
 isolated profile with `xpinstall.signatures.required=false`. The auto-generated

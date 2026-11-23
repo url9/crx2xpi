@@ -85,6 +85,55 @@ describe('analyzeSources', () => {
     });
   });
 
+  it('flags the bookmarks.onChildrenReordered crash seen in YueVision', () => {
+    // YueVision's background threw `TypeError: chrome.bookmarks
+    // .onChildrenReordered is undefined` at runtime in Firefox ESR 153 while
+    // the report showed zero findings; bug 1319530 has been open since 2016.
+    const sources: DiagnosticSource[] = [
+      { path: 'background.js', content: 'chrome.bookmarks.onChildrenReordered.addListener(sync);' },
+    ];
+    const findings = analyzeSources(sources);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      file: 'background.js',
+      line: 1,
+      code: 'chrome.bookmarks.onChildrenReordered',
+      severity: 'warning',
+    });
+  });
+
+  it('flags the other unimplemented bookmark import events under both roots', () => {
+    // onImportBegan/onImportEnded share the same Firefox gap as
+    // onChildrenReordered; browser.* must match just like chrome.*.
+    const sources: DiagnosticSource[] = [
+      { path: 'background.js', content: 'browser.bookmarks.onImportBegan.addListener(a);' },
+      { path: 'other.js', content: 'chrome.bookmarks.onImportEnded.addListener(b);' },
+    ];
+    const findings = analyzeSources(sources);
+    expect(findings).toHaveLength(2);
+    expect(findings.map((f) => f.code)).toEqual([
+      'browser.bookmarks.onImportBegan',
+      'chrome.bookmarks.onImportEnded',
+    ]);
+  });
+
+  it('does not flag bookmark APIs Firefox supports', () => {
+    // The bookmarks namespace itself is supported; only the three unimplemented
+    // event names must trigger findings.
+    const sources: DiagnosticSource[] = [
+      {
+        path: 'background.js',
+        content: [
+          'chrome.bookmarks.create({title:"x"});',
+          'browser.bookmarks.onCreated.addListener(a);',
+          'chrome.bookmarks.onMoved.addListener(b);',
+          'browser.bookmarks.onChanged.addListener(c);',
+        ].join('\n'),
+      },
+    ];
+    expect(analyzeSources(sources)).toEqual([]);
+  });
+
   it('does not flag Firefox-supported APIs used by extensions such as Dark Reader', () => {
     // browser.* must not be matched wholesale: only catalogue entries are flagged.
     const sources: DiagnosticSource[] = [
