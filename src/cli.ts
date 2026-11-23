@@ -7,7 +7,7 @@
  * directory on disk. The CLI owns presentation only: all conversion logic
  * lives in `src/core/` so the engine stays embeddable as a library.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError } from 'commander';
@@ -48,24 +48,29 @@ const defaultIo: CliIo = {
   },
 };
 
+/** Version reported by `--version`, read once from package.json. */
+const CLI_VERSION: string = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  }
+).version;
+
 /**
- * Parse CLI arguments without spawning or exiting the process.
+ * Build the commander program with output streams silenced and overrides on.
  *
- * Output streams are silenced because commander otherwise writes usage and
- * error text directly to the terminal; the caller renders errors itself so
- * logging stays testable and consistent.
+ * WHY shared: `parseCliArgs` needs the parsed values, `runCli` needs the exact
+ * same program to render `--help` text on a `commander.helpDisplayed` signal.
+ * Constructing it in one place guarantees the two can never drift.
  *
- * @param argv - Argument vector WITHOUT the node binary and script path.
- * @returns The parsed options for a successful invocation.
- * @throws {CommanderError} On missing arguments or unknown options.
+ * @returns A configured, unparsed commander program.
  */
-export function parseCliArgs(argv: string[]): CliOptions {
-  const program = new Command();
-  program
+function createProgram(): Command {
+  return new Command()
     .configureOutput({ writeOut: (): void => undefined, writeErr: (): void => undefined })
     .exitOverride()
     .name('crx2xpi')
     .description('Convert Chrome MV3 extensions (CRX3) into Firefox-compatible XPI add-ons.')
+    .version(CLI_VERSION, '-V, --version', 'output the version number')
     .argument('<input.crx>', 'source Chrome CRX3 extension file')
     .argument('<output.xpi>', 'destination Firefox XPI add-on file')
     .option('-v, --verbose', 'print detailed conversion progress', false)
@@ -75,7 +80,22 @@ export function parseCliArgs(argv: string[]): CliOptions {
       '-i, --id <id>',
       'custom Gecko add-on ID used when the source manifest has none (e.g., my-ext@domain.com)'
     );
+}
 
+/**
+ * Parse CLI arguments without spawning or exiting the process.
+ *
+ * Output streams are silenced because commander otherwise writes usage and
+ * error text directly to the terminal; the caller renders errors itself so
+ * logging stays testable and consistent.
+ *
+ * @param argv - Argument vector WITHOUT the node binary and script path.
+ * @returns The parsed options for a successful invocation.
+ * @throws {CommanderError} On missing arguments, unknown options, `--help` or
+ * `--version` (the latter two are control-flow signals handled by `runCli`).
+ */
+export function parseCliArgs(argv: string[]): CliOptions {
+  const program = createProgram();
   program.parse(argv, { from: 'user' });
   const [input, output] = program.args;
   const { verbose, keepTemp, report, id } = program.opts<{
@@ -99,7 +119,21 @@ export function runCli(argv: string[], io: CliIo = defaultIo): number {
   try {
     options = parseCliArgs(argv);
   } catch (error) {
-    // Commander errors already carry a precise message (e.g. the missing
+    // `--help` and `--version` are successful control-flow signals, not errors:
+    // commander throws them under exitOverride() after writing to a silenced
+    // stream. Render the real text on our own IO and exit 0 instead of leaking
+    // the raw internal message (`(outputHelp)`) as a fake error.
+    if (error instanceof CommanderError) {
+      if (error.code === 'commander.helpDisplayed') {
+        io.log(createProgram().helpInformation().trimEnd());
+        return 0;
+      }
+      if (error.code === 'commander.version') {
+        io.log(CLI_VERSION);
+        return 0;
+      }
+    }
+    // Other commander errors carry a precise message (e.g. the missing
     // argument name); surfacing it verbatim beats re-parsing the cause.
     const message = error instanceof CommanderError ? error.message.trim() : String(error);
     io.error(`crx2xpi: ${message}`);

@@ -79,6 +79,36 @@ describe('parseCliArgs', () => {
 describe('runCli', () => {
   const fixtureBytes = (): Buffer => readFileSync(FIXTURE_PATH);
 
+  it('prints the full help text and exits 0 for --help', () => {
+    const io = recordingIo();
+
+    const exitCode = runCli(['--help'], io);
+
+    expect(exitCode).toBe(0);
+    expect(io.err).toEqual([]);
+    expect(io.out).toHaveLength(1);
+    expect(io.out[0]).toContain('Usage: crx2xpi');
+    expect(io.out[0]).toContain('--verbose');
+    expect(io.out[0]).toContain('--id <id>');
+    expect(io.out[0]).not.toContain('(outputHelp)');
+  });
+
+  it('prints the package version and exits 0 for --version and -V', () => {
+    const longIo = recordingIo();
+    const shortIo = recordingIo();
+
+    expect(runCli(['--version'], longIo)).toBe(0);
+    expect(runCli(['-V'], shortIo)).toBe(0);
+
+    const expected = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+    ) as { version: string };
+    expect(longIo.out).toEqual([expected.version]);
+    expect(shortIo.out).toEqual([expected.version]);
+    expect(longIo.err).toEqual([]);
+    expect(shortIo.err).toEqual([]);
+  });
+
   it('converts the real sample and returns exit code 0', () => {
     const crxPath = join(workDir, 'sample.crx');
     const outputPath = join(workDir, 'out', 'sample.xpi');
